@@ -1,5 +1,8 @@
 {-# LANGUAGE GADTs, GeneralisedNewtypeDeriving #-}
 
+-- note that unlike in the paper, this computes the PWR-Relation rather than potential races.
+-- the lockset method is not applied yet
+
 module PWR where
 
 import Control.Monad.State
@@ -17,16 +20,17 @@ newtype VClock = VClock {clock :: Map Thread TStamp} deriving (Show) -- idea: us
 data Epoch     = Epoch {id ::  Thread, tstamp :: TStamp}
 data HistEl    = HistEl {epoch :: Epoch, vclock :: VClock}
 
--- pretty direct copy of global variables for PWR algorithm from paper 
--- missing: "edges", "conc", "evt" are unneeded for simple PWR
-data PWRGlobal = PWRGlobal { lockS   :: Map Thread (Set Lock),  -- current lockset per thread
-                             vClocks :: Map Thread VClock,      -- current vector clock per thread
-                             lastW_C :: Map Var VClock,         -- vector clock of last write on var
-                             lastW_T :: Map Var Thread,         -- threads with last write on var
-                             lastW_L :: Map Var (Set Lock),     -- lockset of last write on var
-                             acq     :: Map Lock Epoch,         -- epoch of last aquire for lock
-                             hist    :: Map Lock [HistEl],      -- lock history
-                             rw      :: Map Var (Set Event) }
+-- oriented from PWR paper, but adapted to single pass and displaying PWR instead of reporting races directly
+-- doing it with vector clocks like this means that if we want to find events that are in relation, 
+-- we first have to look through the clocks again -> isn't this really inefficient?
+data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- current lockset per thread
+                             vClocks     :: Map Thread VClock,             -- current vector clock per thread
+                             lastW_C     :: Map Var VClock,                -- vector clock of last write on var
+                             lastW_T     :: Map Var Thread,                -- threads with last write on var
+                             lastW_L     :: Map Var (Set Lock),            -- lockset of last write on var
+                             acq         :: Map Lock Epoch,                -- epoch of last aquire for lock
+                             hist        :: Map Lock [HistEl],             -- lock history
+                             eventClocks :: Map Event VClock }             -- vector clock for each event
 
 
 ---------- helper functions ----------
@@ -82,7 +86,7 @@ release i y = do
 -- modify state for write event:
 -- sync clock -> set concurrent read/writes -> save last write information -> increment thread clock (?)
 write :: Thread -> Lock -> State PWRGlobal ()
-write = undefined
+write i y = undefined
 
 -- modify state for read event:
 -- set concurrent read/writes -> update clock to last write -> sync clock -> set concurrrent read/writes -> increment thread clock (?)
