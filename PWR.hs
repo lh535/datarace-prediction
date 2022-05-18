@@ -8,6 +8,7 @@
 -- TODO: non-hardcoded vector clock length
 -- TODO: examples in separate file
 -- TODO: testing?
+-- TODO: clocks should initialize to one for own thread
 
 module PWR where
 
@@ -113,45 +114,45 @@ pwr trace = evalState (foldM (\r e -> case op e of
 -- sync clock -> add lock to lockset of thread -> update last aquire epoch -> increment thread clock
 acquirePWR :: Thread -> Lock -> State PWRGlobal ()
 acquirePWR i y = do
+    incClock i
     applyW3 i
     s <- get
     let newLockS = S.union (lockSFind i (lockS s)) (S.singleton y)
     let newAcq = Epoch i (clock (vClocks s M.! i) M.! i)  -- vClocks is initialized, so access is safe
     put s {lockS = M.insert i newLockS (lockS s),
            acq = M.insert y newAcq (acq s)}
-    incClock i
 
 -- modify state for release event:
 -- sync clock -> remove lock from lockset of thread -> update lock history with prev acquire -> increment thread clock
 releasePWR :: Thread -> Lock -> State PWRGlobal ()
 releasePWR i y = do
+    incClock i
     applyW3 i
     s <- get
     let newLockS = S.delete y (lockSFind i (lockS s))
     let newHist = HistEl (acq s M.! y) (vClocks s M.! i) : histFind y (hist s)  -- access to acq safe, because acquire happens before release
     put s {lockS = M.insert i newLockS (lockS s),
            hist = M.insert y newHist (hist s)}
-    incClock i
 
 -- modify state for write event:
 -- sync clock -> set clock of last write for var -> increment thread clock (?)
 writePWR :: Thread -> Var -> State PWRGlobal ()
 writePWR i x = do
+    incClock i
     applyW3 i
     s <- get
     put s {lastW = M.insert x (vClocks s M.! i) (lastW s)}
-    incClock i
 
 -- modify state for read event (unoptimized):
 -- update thread clock to last write -> sync with w3 -> increment thread clock (?)
 readPWR :: Thread -> Var -> State PWRGlobal ()
 readPWR i x = do
+    incClock i
     s <- get
     let newClock = (vClocks s M.! i) `vUnion` (lastW s M.! x) -- access to lastW is safe because read can't be before first write
     put s {vClocks = M.insert i newClock (vClocks s)}
     s <- get
     applyW3 i
-    incClock i
 
 -- increment clock of thread where fork was called
 forkPWR :: Thread -> State PWRGlobal ()
@@ -176,12 +177,12 @@ syncClock = foldr (\(HistEl (Epoch j k) v') v ->
 -- establish ROD (=release order dependency): If e, f in two crit. sections, e < f, then rel < f
 --    VClock -> Lockset  -> hist              -> VClock
 w3 :: VClock -> Set Lock -> Map Lock [HistEl] -> VClock
-w3 v ls h = S.foldr (\l result -> syncClock result (histFind l h)) v ls -- could also be uniniated history
+w3 v ls h = S.foldr (\l result -> syncClock result (histFind l h)) v ls
 
 
 -- can these be made pure...?
 -- apply w3 to vector clock of thread
-applyW3 :: Thread -> State PWRGlobal () --- there's a problem here!! not suuuure where
+applyW3 :: Thread -> State PWRGlobal ()
 applyW3 i = do
     s <- get
     let newClock = w3 (vClocks s M.! i) (lockSFind i (lockS s)) (hist s)
