@@ -155,12 +155,11 @@ w3 v ls h = S.foldr (\l result -> syncClock result (h M.! l)) v ls
 
 -- can these be made pure...?
 -- apply w3 to vector clock of thread
-applyW3 :: Thread -> State PWRGlobal VClock
+applyW3 :: Thread -> State PWRGlobal ()
 applyW3 i = do
     s <- get
     let newClock = w3 (vClocks s M.! i) (lockS s M.! i) (hist s)
     put s {vClocks = M.insert i newClock (vClocks s)}
-    return newClock
 
 -- increment vector clock for thread i by one, in thread i
 incClock :: Thread -> State PWRGlobal ()
