@@ -104,7 +104,7 @@ toMD = toMDExtra ("", \_ -> "")
 toMDExtra :: (String, Event -> String) -> [Event] -> String
 toMDExtra (lastRow, genLast) es =
   let firstRow = 4
-      row = 9
+      row = 15
       adj row xs
        | length xs >= row = error "fix row size"
        | otherwise = xs ++ replicate (row - length xs) ' '

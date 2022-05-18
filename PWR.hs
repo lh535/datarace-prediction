@@ -4,8 +4,8 @@
 -- the lockset method is not applied yet
 
 
--- TODO: vector initialization for fork
--- TODO: clocks should initialize to one for own thread
+-- TODO: check that naming is consistent
+-- TODO: row size issue for printing? modular length?
 -- TODO: examples in separate file
 -- TODO: testing?
 
@@ -29,7 +29,6 @@ data HistEl    = HistEl {epoch :: Epoch, vclock :: VClock}
 -- oriented from PWR paper, but adapted to single pass and displaying PWR instead of reporting races directly
 -- doing it with vector clocks like this means that if we want to find events that are in relation, 
 -- we first have to look through the clocks again -> isn't this really inefficient?
--- idea: compute concurrent as well - for showing the relation, we could subtract those from the total and display that
 data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- current lockset per thread
                              vClocks     :: Map Thread VClock,             -- current vector clock per thread
                              lastW       :: Map Var VClock,                -- vector clock of last write on var
@@ -37,16 +36,15 @@ data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- cu
                              hist        :: Map Lock [HistEl]}             -- lock history
 
 
--- returrn type: maps vector clock to every event
+-- return type: maps vector clock to every event
 newtype EventVC = EventVC {clocks :: Map Event VClock}
 
----------- helper functions ----------
+---------- general helper functions ----------
 
--- initialize vector clock for n threads: time stamp 0 for all threads
--- NOTE: this means we need to pass the number of threads to the algorithm. Is it necessary to work with initialized clocks?
--- NOTE: should be set to 1 for position of thread!
-vInit :: Int -> VClock
-vInit n = VClock $ M.fromList $ map (\i -> (Thread i, TStamp 0)) [0..(n-1)]
+-- initialize vector clock for n threads: time stamp 0 for all threads except current thread k
+-- currently initializes all to 0. Should it initialize current thread to one instead?
+vInit :: Int -> Int -> VClock
+vInit n k = VClock $ M.fromList $ map (\i -> (Thread i, if i == k then TStamp 0 else TStamp 0)) [0..(n-1)]
 
 -- union for vector clocks (take max of each pair of elements)
 vUnion :: VClock -> VClock -> VClock
@@ -58,12 +56,12 @@ vBefore (VClock v) (VClock w) = M.isSubmapOfBy (<=) v w && not (M.isSubmapOf v w
 
 -- increment vector clock for one thread by one
 vInc :: Thread -> VClock -> VClock
-vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v
+vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v  -- forgot to use this... should probably fix that
 
 emptyState :: PWRGlobal
 emptyState = PWRGlobal {lockS = M.empty,
-                        vClocks = M.fromList [(Thread 0, vInit 3), (Thread 1, vInit 3), (Thread 2, vInit 3)],
-                        lastW = M.fromList [(Var "x", vInit 3)],
+                        vClocks = M.fromList [(Thread 0, vInit 1 0)],
+                        lastW = M.empty,
                         acq = M.empty,
                         hist = M.empty}
 
@@ -77,7 +75,9 @@ histFind = M.findWithDefault []
 
 ---------- PWR ----------
 
--- still todo: number of traces for vector clocks
+-- run pwr, return map from events to calculated vector clocks
+-- notes: is the order of calculate/increment -> save vector clock fine? especially for fork/join
+-- currently increases vector clock sizes one by one, when fork is encountered
 pwr :: [Event] -> EventVC
 pwr trace = evalState (foldM (\r e -> case op e of
                                         Acquire y -> do acquirePWR (thread e) y
@@ -96,11 +96,18 @@ pwr trace = evalState (foldM (\r e -> case op e of
                                                       s <- get
                                                       return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Fork t -> do forkPWR (thread e)
+                                        Fork j -> do forkPWR (thread e)
+                                                     s <- get
+                                                     let extendedClocks = forkExtendClocks j (vClocks s) -- TODO: move this to function
+                                                     let withAddedClocks = forkAddClock j (thread e) extendedClocks
+                                                     put s {vClocks = withAddedClocks}
                                                      s <- get
                                                      return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Join t -> do joinPWR (thread e)
+                                        Join j -> do joinPWR (thread e)
+                                                     s <- get
+                                                     let newClock = (vClocks s M.! j) `vUnion` (vClocks s M.! (thread e))
+                                                     put s {vClocks = M.insert (thread e) newClock (vClocks s)}
                                                      s <- get
                                                      return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
@@ -194,6 +201,14 @@ incClock i = do
     let currClock = vClocks s M.! i
     put s {vClocks = M.insert i (vInc i currClock) (vClocks s)}
 
+-- for calling fork: add thread with timestamp 0 to existing vector clocks
+forkExtendClocks :: Thread -> Map Thread VClock -> Map Thread VClock
+forkExtendClocks t = M.map (VClock . M.insert t (TStamp 0) . clock)
+
+-- when calling fork: add new clock to thread -> vector clock map
+-- new clock is copy of the one that belongs to the thread that called fork
+forkAddClock :: Thread -> Thread -> Map Thread VClock -> Map Thread VClock
+forkAddClock t call_t c = M.insert t (c M.! call_t) c
 
 ---------- Printing ----------
 
@@ -201,7 +216,7 @@ instance Show TStamp where
     show (TStamp i) = show i
 
 instance Show VClock where
-    show (VClock c) = show $ M.toList c
+    show (VClock c) = show $ M.toList c  -- maybe the output could be prettier than this?
 
 instance Show Epoch where
     show (Epoch j k) = show j ++ "#"  ++ show k
