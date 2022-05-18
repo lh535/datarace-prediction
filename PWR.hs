@@ -4,11 +4,10 @@
 -- the lockset method is not applied yet
 
 
--- TODO: pretty printing
--- TODO: non-hardcoded vector clock length
+-- TODO: vector initialization for fork
+-- TODO: clocks should initialize to one for own thread
 -- TODO: examples in separate file
 -- TODO: testing?
--- TODO: clocks should initialize to one for own thread
 
 module PWR where
 
@@ -22,8 +21,8 @@ import Trace
 
 ---------- data definitions ----------
 
-newtype TStamp = TStamp Int  deriving (Ord, Eq, Show, Num)  -- would just using type be good here too?
-newtype VClock = VClock {clock :: Map Thread TStamp} deriving (Show) -- idea: use intmap, vector, mutable vector?
+newtype TStamp = TStamp Int  deriving (Ord, Eq, Num)  -- would just using type be good here too?
+newtype VClock = VClock {clock :: Map Thread TStamp}  -- idea: use intmap, vector, mutable vector?
 data Epoch     = Epoch {id ::  Thread, tstamp :: TStamp}
 data HistEl    = HistEl {epoch :: Epoch, vclock :: VClock}
 
@@ -39,7 +38,7 @@ data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- cu
 
 
 -- returrn type: maps vector clock to every event
-newtype EventVC = EventVC {clocks :: Map Event VClock} deriving (Show)
+newtype EventVC = EventVC {clocks :: Map Event VClock}
 
 ---------- helper functions ----------
 
@@ -194,6 +193,26 @@ incClock i = do
     s <- get
     let currClock = vClocks s M.! i
     put s {vClocks = M.insert i (vInc i currClock) (vClocks s)}
+
+
+---------- Printing ----------
+
+instance Show TStamp where
+    show (TStamp i) = show i
+
+instance Show VClock where
+    show (VClock c) = show $ M.toList c
+
+instance Show Epoch where
+    show (Epoch j k) = show j ++ "#"  ++ show k
+
+instance Show HistEl where
+    show (HistEl e v) = show (e, v)
+
+instance Show EventVC where
+    show (EventVC c) = M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ "\n" ++ r) "" c
+
+annotatedWithPWR trace = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
 
 ---------- Tests ----------
 
