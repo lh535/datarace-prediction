@@ -92,7 +92,38 @@ exampleTrace =
    joinE t0 t1,
    relE t0 y
    ]
-
+ex1 =
+  let t0 = mainThread
+      t1 = nextThread t0
+      x = Var "x"
+  in [ forkE t0 t1,
+                    wrE t1 x,      -- w1
+       wrE t0 x,                   -- w2
+                    rdE t1 x       -- r3
+     ]
+ex8 =
+  let t0 = mainThread
+      t1 = nextThread t0
+      t2 = nextThread t1
+      x = Var "x"
+      y = Lock "y"
+  in [
+      forkE t0 t1,
+      forkE t0 t2,
+      acqE t0 y,
+      wrE t0 x,
+      relE t0 y,
+      rdE t0 x,
+      rdE t0 x,
+                 acqE t1 y,
+                 rdE t1 x,
+                 rdE t1 x,
+                 relE t1 y,
+                            acqE t2 y,
+                            rdE t2 x,
+                            rdE t2 x,
+                            relE t2 y
+      ]
 
 -------------------------------------------------------
 -- tools for printing traces
