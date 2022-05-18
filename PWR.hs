@@ -23,15 +23,16 @@ data HistEl    = HistEl {epoch :: Epoch, vclock :: VClock}
 -- oriented from PWR paper, but adapted to single pass and displaying PWR instead of reporting races directly
 -- doing it with vector clocks like this means that if we want to find events that are in relation, 
 -- we first have to look through the clocks again -> isn't this really inefficient?
+-- idea: compute concurrent as well - for showing the relation, we could subtract those from the total and display that
 data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- current lockset per thread
                              vClocks     :: Map Thread VClock,             -- current vector clock per thread
-                             lastW_C     :: Map Var VClock,                -- vector clock of last write on var
-                             lastW_T     :: Map Var Thread,                -- threads with last write on var
-                             lastW_L     :: Map Var (Set Lock),            -- lockset of last write on var
+                             lastW       :: Map Var VClock,                -- vector clock of last write on var
                              acq         :: Map Lock Epoch,                -- epoch of last aquire for lock
-                             hist        :: Map Lock [HistEl],             -- lock history
-                             eventClocks :: Map Event VClock }             -- vector clock for each event
+                             hist        :: Map Lock [HistEl]}             -- lock history
 
+
+-- returrn type: maps vector clock to every event
+newtype EventVC = EventVC {clocks :: Map Event VClock} deriving (Show)
 
 ---------- helper functions ----------
 
@@ -52,17 +53,41 @@ vBefore (VClock v) (VClock w) = M.isSubmapOfBy (<=) v w && not (M.isSubmapOf v w
 vInc :: Thread -> VClock -> VClock
 vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v
 
+emptyState :: PWRGlobal
+emptyState = PWRGlobal {lockS = M.empty, vClocks = M.fromList [(Thread 0, vInit 2), (Thread 1, vInit 2)], lastW = M.empty, acq = M.empty, hist = M.empty}
+
 ---------- PWR ----------
 
-pwr :: [Event] -> Map Var (Set Event)
-pwr = undefined
+-- still todo: number of traces for vector clocks
+pwr :: [Event] -> EventVC
+pwr trace = evalState (foldM (\r e -> case op e of
+                                        Acquire y -> do acquirePWR (thread e) y
+                                                        s <- get
+                                                        return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                        Release y -> do releasePWR (thread e) y
+                                                        s <- get
+                                                        return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                        Read x -> do readPWR (thread e) x
+                                                     s <- get
+                                                     return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                        Write x -> do writePWR (thread e) x
+                                                      s <- get
+                                                      return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                        Fork t -> do forkPWR (thread e)
+                                                     s <- get
+                                                     return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                        Join t -> do joinPWR (thread e)
+                                                     s <- get
+                                                     return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
+                                    
+                             ) (EventVC M.empty) trace) emptyState
 
 ---------- functions for every type of event ----------
 
 -- modify state for acquire event: 
 -- sync clock -> add lock to lockset of thread -> update last aquire epoch -> increment thread clock
-acquire :: Thread -> Lock -> State PWRGlobal ()
-acquire i y = do
+acquirePWR :: Thread -> Lock -> State PWRGlobal ()
+acquirePWR i y = do
     s <- get
     applyW3 i
     let newLockS = S.union (lockS s M.! i) (S.singleton y)
@@ -73,25 +98,44 @@ acquire i y = do
 
 -- modify state for release event:
 -- sync clock -> remove lock from lockset of thread -> update lock history with prev acquire -> increment thread clock
-release :: Thread -> Lock -> State PWRGlobal ()
-release i y = do
+releasePWR :: Thread -> Lock -> State PWRGlobal ()
+releasePWR i y = do
     s <- get
     applyW3 i
     let newLockS = S.delete y (lockS s M.! i)
     let newHist = HistEl (acq s M.! y) (vClocks s M.! i) : (hist s M.! y)
     put s {lockS = M.insert i newLockS (lockS s),
-           hist = undefined}
+           hist = M.insert y newHist (hist s)}
     incClock i
 
 -- modify state for write event:
--- sync clock -> set concurrent read/writes -> save last write information -> increment thread clock (?)
-write :: Thread -> Lock -> State PWRGlobal ()
-write i y = undefined
+-- sync clock -> set clock of last write for var -> increment thread clock (?)
+writePWR :: Thread -> Var -> State PWRGlobal ()
+writePWR i x = do
+    s <- get
+    applyW3 i
+    put s {lastW = M.insert x (vClocks s M.! i) (lastW s)}
+    incClock i
 
--- modify state for read event:
--- set concurrent read/writes -> update clock to last write -> sync clock -> set concurrrent read/writes -> increment thread clock (?)
-read :: Thread -> Lock -> State PWRGlobal ()
-read = undefined
+-- modify state for read event (unoptimized):
+-- update thread clock to last write -> sync with w3 -> increment thread clock (?)
+readPWR :: Thread -> Var -> State PWRGlobal ()
+readPWR i x = do
+    s <- get
+    let newClock = (vClocks s M.! i) `vUnion` (lastW s M.! x) -- bug here?
+    put s {vClocks = M.insert i newClock (vClocks s)}
+    applyW3 i
+    incClock i
+
+-- increment clock of thread where fork was called
+forkPWR :: Thread -> State PWRGlobal ()
+forkPWR i = do
+    incClock i
+
+--- increment clock of thread where join was called
+joinPWR :: Thread -> State PWRGlobal ()
+joinPWR i = do
+    incClock i
 
 ---------- PWR helpers ----------
 

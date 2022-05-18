@@ -84,13 +84,13 @@ exampleTrace =
       y = Lock "y"
 
   in [
-   wrE t0 x,
-   acqE t0 y,
-   rdE t0 x,
-   forkE t0 t1,
-                     wrE t1 x,
-   joinE t0 t1,
-   relE t0 y
+--    wrE t0 x,
+--    acqE t0 y,
+   rdE t0 x
+--    forkE t0 t1,
+--                      wrE t1 x,
+--    joinE t0 t1,
+--    relE t0 y
    ]
 
 
