@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs, GeneralisedNewtypeDeriving #-}
 
 -- Current naming: v/w for vector clock, c for clock dictionary, i/j for threads, y for locks, x for vars
+-- TODO: pretty printing of set output
 -- TODO: row size issue for printing? modular length?
 -- TODO: more testing? more safe accessing of elements?
 
@@ -101,6 +102,15 @@ pwr trace = evalState (foldM (\r e -> case op e of
 
 
                              ) (EventVC M.empty) trace) emptyState
+
+-- compute set of events that are in <-PWR relation from result of PWR, for one event vector clock
+relatedEvents :: VClock -> EventVC -> Set Event
+relatedEvents v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.insert e' r else r) S.empty (clocks c)
+
+-- compute relatedEvents for every event in result for PWR.
+allRelatedEvents :: EventVC -> Map Event (Set Event)
+allRelatedEvents c = M.map (`relatedEvents` c) (clocks c)
+
 
 ---------- functions for every type of event ----------
 
