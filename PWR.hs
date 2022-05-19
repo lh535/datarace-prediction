@@ -1,13 +1,8 @@
 {-# LANGUAGE GADTs, GeneralisedNewtypeDeriving #-}
 
--- note that unlike in the paper, this computes the PWR-Relation rather than potential races.
--- the lockset method is not applied yet
-
-
--- TODO: check that naming is consistent
+-- Current naming: v/w for vector clock, c for clock dictionary, i/j for threads, y for locks, x for vars
 -- TODO: row size issue for printing? modular length?
--- TODO: examples in separate file
--- TODO: testing?
+-- TODO: more testing? more safe accessing of elements?
 
 module PWR where
 
@@ -23,12 +18,10 @@ import Trace
 
 newtype TStamp = TStamp Int  deriving (Ord, Eq, Num)  -- would just using type be good here too?
 newtype VClock = VClock {clock :: Map Thread TStamp}  -- idea: use intmap, vector, mutable vector?
-data Epoch     = Epoch {id ::  Thread, tstamp :: TStamp}
+data Epoch     = Epoch {t ::  Thread, tstamp :: TStamp}
 data HistEl    = HistEl {epoch :: Epoch, vclock :: VClock}
 
--- oriented from PWR paper, but adapted to single pass and displaying PWR instead of reporting races directly
--- doing it with vector clocks like this means that if we want to find events that are in relation, 
--- we first have to look through the clocks again -> isn't this really inefficient?
+-- state for storing global variables of PWR algorithm (oriented from PWR paper)
 data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- current lockset per thread
                              vClocks     :: Map Thread VClock,             -- current vector clock per thread
                              lastW       :: Map Var VClock,                -- vector clock of last write on var
@@ -41,10 +34,11 @@ newtype EventVC = EventVC {clocks :: Map Event VClock}
 
 ---------- general helper functions ----------
 
--- initialize vector clock for n threads: time stamp 0 for all threads except current thread k
--- currently initializes all to 0. Should it initialize current thread to one instead?
+-- initialize vector clock for n threads: time stamp 0 for all threads except current thread i
+-- ! currently initializes all to 0. Paper says current thread should be initialized to 1?
+--    -> this wouldn't work with the increment/save order right now, I believe. save clock first, then process event?
 vInit :: Int -> Int -> VClock
-vInit n k = VClock $ M.fromList $ map (\i -> (Thread i, if i == k then TStamp 0 else TStamp 0)) [0..(n-1)]
+vInit n i = VClock $ M.fromList $ map (\j -> (Thread j, if j == i then TStamp 0 else TStamp 0)) [0..(n-1)]
 
 -- union for vector clocks (take max of each pair of elements)
 vUnion :: VClock -> VClock -> VClock
@@ -56,14 +50,7 @@ vBefore (VClock v) (VClock w) = M.isSubmapOfBy (<=) v w && not (M.isSubmapOf v w
 
 -- increment vector clock for one thread by one
 vInc :: Thread -> VClock -> VClock
-vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v  -- forgot to use this... should probably fix that
-
-emptyState :: PWRGlobal
-emptyState = PWRGlobal {lockS = M.empty,
-                        vClocks = M.fromList [(Thread 0, vInit 1 0)],
-                        lastW = M.empty,
-                        acq = M.empty,
-                        hist = M.empty}
+vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v
 
 -- safe lookup for lookS. Returns empty set if key is not in map
 lockSFind :: Thread -> Map Thread (Set Lock) -> Set Lock
@@ -73,10 +60,18 @@ lockSFind = M.findWithDefault S.empty
 histFind :: Lock -> Map Lock [HistEl] -> [HistEl]
 histFind = M.findWithDefault []
 
+-- starting state
+emptyState :: PWRGlobal
+emptyState = PWRGlobal {lockS = M.empty,
+                        vClocks = M.fromList [(Thread 0, vInit 1 0)],
+                        lastW = M.empty,
+                        acq = M.empty,
+                        hist = M.empty}
+
 ---------- PWR ----------
 
 -- run pwr, return map from events to calculated vector clocks
--- notes: is the order of calculate/increment -> save vector clock fine? especially for fork/join
+-- notes: is the order of calculate/increment + save vector clock fine? especially for fork/join
 -- currently increases vector clock sizes one by one, when fork is encountered
 pwr :: [Event] -> EventVC
 pwr trace = evalState (foldM (\r e -> case op e of
@@ -96,18 +91,11 @@ pwr trace = evalState (foldM (\r e -> case op e of
                                                       s <- get
                                                       return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Fork j -> do forkPWR (thread e)
-                                                     s <- get
-                                                     let extendedClocks = forkExtendClocks j (vClocks s) -- TODO: move this to function
-                                                     let withAddedClocks = forkAddClock j (thread e) extendedClocks
-                                                     put s {vClocks = withAddedClocks}
+                                        Fork j -> do forkPWR (thread e) j
                                                      s <- get
                                                      return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Join j -> do joinPWR (thread e)
-                                                     s <- get
-                                                     let newClock = (vClocks s M.! j) `vUnion` (vClocks s M.! (thread e))
-                                                     put s {vClocks = M.insert (thread e) newClock (vClocks s)}
+                                        Join j -> do joinPWR (thread e) j
                                                      s <- get
                                                      return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
@@ -161,23 +149,30 @@ readPWR i x = do
     applyW3 i
 
 -- increment clock of thread where fork was called
-forkPWR :: Thread -> State PWRGlobal ()
-forkPWR i = do
+forkPWR :: Thread -> Thread -> State PWRGlobal ()
+forkPWR i j = do
     incClock i
+    s <- get
+    let extendedClocks = forkExtendClocks j (vClocks s)
+    let withAddedClocks = forkAddClock j i extendedClocks
+    put s {vClocks = withAddedClocks}
 
 --- increment clock of thread where join was called
-joinPWR :: Thread -> State PWRGlobal ()
-joinPWR i = do
+joinPWR :: Thread -> Thread -> State PWRGlobal ()
+joinPWR i j = do
     incClock i
+    s <- get
+    let newClock = (vClocks s M.! j) `vUnion` (vClocks s M.! i)
+    put s {vClocks = M.insert i newClock (vClocks s)}
 
 ---------- PWR helpers ----------
 
 -- look through lock history. If an acquire in history has earlier timestamp, sync current clock with clock in history
 -- helper function for w3
 syncClock :: VClock -> [HistEl] -> VClock
-syncClock = foldr (\(HistEl (Epoch j k) v') v ->
+syncClock = foldr (\(HistEl (Epoch j k) w) v ->
                     if k < clock v M.! j
-                    then vUnion v v'
+                    then v `vUnion` w
                     else v)
 
 -- establish ROD (=release order dependency): If e, f in two crit. sections, e < f, then rel < f
@@ -216,7 +211,7 @@ instance Show TStamp where
     show (TStamp i) = show i
 
 instance Show VClock where
-    show (VClock c) = show $ M.toList c  -- maybe the output could be prettier than this?
+    show (VClock c) = init $ init $ M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ ", " ++ r) "" c
 
 instance Show Epoch where
     show (Epoch j k) = show j ++ "#"  ++ show k
