@@ -14,6 +14,7 @@ import qualified Data.Map as M  -- use IntMap?
 import qualified Data.Set as S
 
 import Trace
+import Examples
 
 ---------- data definitions ----------
 
@@ -36,7 +37,7 @@ newtype EventVC = EventVC {clocks :: Map Event VClock}
 ---------- general helper functions ----------
 
 -- initialize vector clock for n threads: time stamp 0 for all threads except current thread i
--- ! currently initializes all to 0. Paper says current thread should be initialized to 1?
+-- NOTE: currently initializes all to 0. Paper says current thread should be initialized to 1?
 --    -> this wouldn't work with the increment/save order right now, I believe. save clock first, then process event?
 vInit :: Int -> Int -> VClock
 vInit n i = VClock $ M.fromList $ map (\j -> (Thread j, if j == i then TStamp 0 else TStamp 0)) [0..(n-1)]
@@ -72,7 +73,7 @@ emptyState = PWRGlobal {lockS = M.empty,
 ---------- PWR ----------
 
 -- run pwr, return map from events to calculated vector clocks
--- notes: is the order of calculate/increment + save vector clock fine? especially for fork/join
+-- NOTE: is the order of calculate/increment + save vector clock fine? especially for fork/join
 -- currently increases vector clock sizes one by one, when fork is encountered
 pwr :: [Event] -> EventVC
 pwr trace = evalState (foldM (\r e -> case op e of
@@ -104,6 +105,7 @@ pwr trace = evalState (foldM (\r e -> case op e of
                              ) (EventVC M.empty) trace) emptyState
 
 -- compute set of events that are in <-PWR relation from result of PWR, for one event vector clock
+-- NOTE: Doesn't add event itself to set, unlike other pwr implementation. Why should it be added?
 relatedEvents :: VClock -> EventVC -> Set Event
 relatedEvents v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.insert e' r else r) S.empty (clocks c)
 
@@ -114,8 +116,7 @@ allRelatedEvents c = M.map (`relatedEvents` c) (clocks c)
 
 ---------- functions for every type of event ----------
 
--- modify state for acquire event: 
--- sync clock -> add lock to lockset of thread -> update last aquire epoch -> increment thread clock
+-- modify state for acquire: increment -> sync clocks -> update lockset of thread, update last aquire for lock
 acquirePWR :: Thread -> Lock -> State PWRGlobal ()
 acquirePWR i y = do
     incClock i
@@ -126,8 +127,7 @@ acquirePWR i y = do
     put s {lockS = M.insert i newLockS (lockS s),
            acq = M.insert y newAcq (acq s)}
 
--- modify state for release event:
--- sync clock -> remove lock from lockset of thread -> update lock history with prev acquire -> increment thread clock
+-- modify state for release: increment -> sync clocks -> update lockset of thread and history of lock
 releasePWR :: Thread -> Lock -> State PWRGlobal ()
 releasePWR i y = do
     incClock i
@@ -138,8 +138,7 @@ releasePWR i y = do
     put s {lockS = M.insert i newLockS (lockS s),
            hist = M.insert y newHist (hist s)}
 
--- modify state for write event:
--- sync clock -> set clock of last write for var -> increment thread clock (?)
+-- modify state for write: increment -> sync clocks -> change last write
 writePWR :: Thread -> Var -> State PWRGlobal ()
 writePWR i x = do
     incClock i
@@ -147,8 +146,7 @@ writePWR i x = do
     s <- get
     put s {lastW = M.insert x (vClocks s M.! i) (lastW s)}
 
--- modify state for read event (unoptimized):
--- update thread clock to last write -> sync with w3 -> increment thread clock (?)
+-- modify state for read (unoptimized): increment -> update clock to last write -> sync clocks
 readPWR :: Thread -> Var -> State PWRGlobal ()
 readPWR i x = do
     incClock i
@@ -158,7 +156,7 @@ readPWR i x = do
     s <- get
     applyW3 i
 
--- increment clock of thread where fork was called
+-- modify state for fork: increment -> extend existing clocks by one for new thread -> initalise new clock to clock of caller
 forkPWR :: Thread -> Thread -> State PWRGlobal ()
 forkPWR i j = do
     incClock i
@@ -167,7 +165,7 @@ forkPWR i j = do
     let withAddedClocks = forkAddClock j i extendedClocks
     put s {vClocks = withAddedClocks}
 
---- increment clock of thread where join was called
+--- modify state for join: increment -> sync clock of calling thread to joined thread
 joinPWR :: Thread -> Thread -> State PWRGlobal ()
 joinPWR i j = do
     incClock i
@@ -233,6 +231,8 @@ instance Show EventVC where
     show (EventVC c) = M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ "\n" ++ r) "" c
 
 annotatedWithPWR trace = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
+
+annotatedWithPWRSet trace =  putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ allRelatedEvents (pwr trace) M.! e) trace
 
 ---------- Tests ----------
 
