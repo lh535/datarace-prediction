@@ -1,4 +1,6 @@
 {-# LANGUAGE GADTs, GeneralisedNewtypeDeriving #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+{-# HLINT ignore "Use tuple-section" #-}
 
 -- Current naming: v/w for vector clock, c for clock dictionary, i/j for threads, y for locks, x for vars
 
@@ -69,32 +71,32 @@ emptyState = PWRGlobal {lockS = M.empty,
 -- run pwr, return map from events to calculated vector clocks
 pwr :: [Event] -> EventVC
 pwr trace = evalState (foldM (\r e -> case op e of
-                                        Acquire y -> do 
+                                        Acquire y -> do
                                             acquirePWR (thread e) y
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))  -- save post-clock
 
-                                        Release y -> do 
+                                        Release y -> do
                                             releasePWR (thread e) y
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Read x -> do 
+                                        Read x -> do
                                             readPWR (thread e) x
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Write x -> do 
+                                        Write x -> do
                                             writePWR (thread e) x
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Fork j -> do 
+                                        Fork j -> do
                                             forkPWR (thread e) j
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
 
-                                        Join j -> do 
+                                        Join j -> do
                                             joinPWR (thread e) j
                                             s <- get
                                             return $ EventVC (M.insert e (vClocks s M.! thread e) (clocks r))
@@ -104,15 +106,15 @@ pwr trace = evalState (foldM (\r e -> case op e of
 
 -- compute set of events that are in <-PWR relation from result of PWR, for one event vector clock
 relatedEvents :: Event -> VClock -> EventVC -> Set Event
-relatedEvents e v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.insert e' r else r) (S.singleton e) (clocks c)
+relatedEvents e v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.insert e' r else r) S.empty (clocks c)
 
 -- compute relatedEvents for every event in result for PWR.
 allRelatedEvents :: EventVC -> Map Event (Set Event)
 allRelatedEvents c = M.mapWithKey (\e v -> relatedEvents e v c) (clocks c)
 
--- compute set of all race pairs from PWR relation
-racePairs :: EventVC -> Set (Event, Event)
-racePairs = undefined  -- only compare with ones afterwards, or only save with first event
+-- compute set of all pairs of events from PWR relation
+pwrPairs :: EventVC -> Set (Event, Event)
+pwrPairs c = M.foldlWithKey (\r e v -> S.union r (S.map (\evt -> (evt, e)) (relatedEvents e v c))) S.empty (clocks c)
 
 ---------- functions for every type of event ----------
 
@@ -160,7 +162,7 @@ readPWR i x = do
 forkPWR :: Thread -> Thread -> State PWRGlobal ()
 forkPWR i j = do
     incClock i
-    s <- get 
+    s <- get
     let extendedClocks = forkExtendClocks j (vClocks s)
     let withAddedClocks = forkAddClock j i extendedClocks
     put s {vClocks = withAddedClocks}

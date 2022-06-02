@@ -11,43 +11,64 @@ import Trace
 import PWR
 import Examples
 
--- note that addLoc is applied to traces automatically as well
+-- NOTE: for all functions, addLoc is applied to traces automatically!
 
--- Markdown Printing of just Trace. If 2nd argument is true, fork/join are omitted
+-- Markdown Printing of Traces. If 2nd argument is true, fork/join are omitted
 toMD :: [Event] -> Bool -> IO ()
 toMD t b = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
 
--- markdown printing for PWR - Vector Clocks
+-- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
 annotatedWithPWR :: [Event] -> IO ()
 annotatedWithPWR t = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
     where trace = addLoc t
 
--- markdown printing for PWR - Sets
+-- markdown printing for PWR - Sets. Always includes fork/join for now
 annotatedWithPWRSet :: [Event] -> IO ()
 annotatedWithPWRSet t =  putStrLn $ toMDExtra ("PWR Set", \e -> setShow $ allRelatedEvents (pwr trace) M.! e) trace
     where trace = addLoc t
 
--- TODO: markdown printing for PWR result of one event
-
-ex1Set = S.singleton ((wrE (Thread 1) (Var "x")){loc = Loc 2}, (wrE (Thread 0) (Var "x")){loc = Loc 3})
-
--- latex printing for Trace:
+-- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
 latexTrace :: [Event] -> IO ()
 latexTrace = putStrLn . toLatex S.empty "" . addLoc . removeFork
 
--- latex printing for PWR:
--- TODO: delete empty lines
--- TODO: convert PWR to set
--- efficient event set selection?
+-- latex printing for example 1, using pre-defined set for arrow.
+-- shows usage of toLatex: a Set with Relations, a relation name and a valid trace must be passed as arguments
+ex1Set = S.singleton ((wrE (Thread 1) (Var "x")){loc = Loc 2}, (rdE (Thread 1) (Var "x")){loc = Loc 4})
 latexEx1 :: [Event] -> IO ()
 latexEx1 = putStrLn . toLatex ex1Set "PWR" . addLoc
 
+-- latex printing for PWR:
+interactiveLatexPWR :: [Event] -> IO ()
+interactiveLatexPWR t = do
+    let trace = addLoc t
+    toMD trace False
+    putStrLn "these are the pairs of Events in the PWR Relation. Type index of pairs to include in latex graphic, separated by a space"
+    let pwrList = zip [1..] (S.toList (delPairFork $ pwrPairs $ pwr trace))
+    putStrLn $ foldl (\r e -> r ++ show (fst e) ++ ": " ++ show (snd e) ++ "\n") "" pwrList
+    nums <- getLine
+    let numList = map read (words nums)
+    let filteredList = filter (\e -> fst e `elem` numList) pwrList
+    let filteredSet = foldl (\r e -> S.insert (snd e) r) S.empty filteredList
+    putStrLn $ "\n" ++ toLatex filteredSet "PWR" trace
+
+---------- misc utility functions ----------
+
+-- delete pairs that include fork/join from a set of relation pairs
+delPairFork :: Set (Event, Event) -> Set (Event, Event)
+delPairFork = S.filter (\e -> (not . isForkJoin . fst) e && (not . isForkJoin . snd) e)
+
 -- remove fork/join from trace - used before addLoc. Can't be applied to traces used in pwr computation
 removeFork :: [Event] -> [Event]
-removeFork = filter f
-    where f Event{op=(Fork t)} = False
-          f Event{op=(Join t)} = False
-          f _                  = True
+removeFork = filter (not . isForkJoin)
+
+isForkJoin :: Event -> Bool
+isForkJoin Event{op=(Fork _)} = True
+isForkJoin Event{op=(Join _)} = True
+isForkJoin _ = False
+
+-- helper for set printing
+setShow :: Set Event -> String
+setShow s = tail $ tail $ S.foldl (\r e -> r ++ ", " ++ show e) "" s
 
 ---------- Markdown Printing ----------
 -- (mostly inspired by existing work from souce/Trace.hs)
@@ -56,7 +77,7 @@ removeFork = filter f
 toMDExtra :: (String, Event -> String) -> [Event] -> String
 toMDExtra (titleLast, genLast) es =
     let firstRow = 4
-        rowS   = 10   -- longest event should be fork(tXX), which is 9 characters
+        rowS   = 10   -- longest string in trace should be fork(tXX), which is 9 characters
         m        = maximum $ map (unThread . thread) es
         adj s xs | length xs >= s = error "fix row size"
                  | otherwise = xs ++ replicate (s - length xs) ' '
@@ -69,15 +90,16 @@ toMDExtra (titleLast, genLast) es =
         (replicate (firstRow - 1) ' ' ++ concat [adj rowS ("T" ++ show i) | i <- [0..m]] ++ titleLast) -- arbitrary length for last row title
         es
 
-
--- helper for set printing
-setShow :: Set Event -> String
-setShow s = tail $ tail $ S.foldl (\r e -> r ++ ", " ++ show e) "" s
-
 ---------- Latex Printing ----------
 
--- string representation of latex code for trace
--- adds arrows for events in relation (=set of pairs) and labels them with name
+-- fork/join are removed automatically; this feature could be removed by removing the if-distinction at the end of the function for foldl, 
+-- but corresponding latex code for fork/join would have to be added to eventL as well.
+
+-- NOTE: adding the name of the relation to arrows is currently disabled, because adding it in the right place is hard to automate.
+-- it can be re-enabled by removing the comment of "name" in tikzL. In that function, adjustments to arrow formatting can be made as well.
+
+-- string representation of latex code for trace.
+-- arguments: Set of Events that should be shown as in relation (=add arrow); name of relation; trace.
 toLatex :: Set (Event, Event) -> String -> [Event] -> String
 toLatex pairs name es =
     let firstRow = 4
@@ -90,49 +112,20 @@ toLatex pairs name es =
                                     (_, Just rt)       -> ("", markL rt)
                                     _                  -> ("", "")
     in
-        foldl (\s e -> let l = show (loc e) ++ ". & "
-                           i = unThread $ thread e
-                           tags = S.foldl (\r rel -> case (fst rel == e, snd rel == e) of
+        unlines (zipWith (++) (["", ""] ++ map (\c -> show c ++ ". & ") [1..]) (lines $  -- to add correct line numbers
+        foldl (\s e -> let i = unThread $ thread e
+                           tags = S.foldl (\r rel -> case (fst rel == e, snd rel == e) of  -- make tag if in relation set
                                                             (True, _) -> fst (uncurry makeTag rel) : r
                                                             (_, True) -> snd (uncurry makeTag rel) : r
                                                             _         -> r) [] pairs
                            (tagLeft, tagRight) = tagListToStrings tags
-                           r = l ++ replicate i '&' ++ tagLeft ++ eventL e ++ tagRight ++ replicate (m-i) '&'
-                       in s ++ "\n" ++ r ++ lineL)
+                           r = replicate i '&' ++ tagLeft ++ eventL e ++ tagRight ++ replicate (m-i) '&'
+                       in if isForkJoin e then s else s ++ "\n" ++ r ++ lineL)  -- don't add line if it's fork/join event
         (bdaL m ++ concat [" & " ++ threadL i | i <- [1..m+1]] ++ lineL ++ "\\hline")
-        es
-        ++ edaL ++ S.foldl (\r evts -> uncurry tikzL evts name ++ r) "" pairs
+        es))
+        ++ edaL ++ S.foldl (\r evts -> uncurry tikzL evts name ++ r) "" pairs  -- adds tikzpicture code afterwards
 
--- ideas: add mark left if threads just one apart, else right. generate mark always the same. xshift: 
-
--- TODO: more nuanced
-data RowRelation = Far | Next | Same  deriving Eq
-
--- determines if two events are in threads that would be next to each other in table
-rowRelation :: Event -> Event -> RowRelation
-rowRelation Event{thread=t1} Event{thread=t2} = case abs (unThread t1 - unThread t2) of
-                                                0 -> Same
-                                                1 -> Next
-                                                _ -> Far
-
-
--- helpers for latex commands
-tikzL :: Event -> Event -> String -> String
-tikzL e f name = "\n \\begin{tikzpicture}[overlay, remember picture, yshift=.25\\baselineskip, shorten >=.5pt, shorten <=.5pt]\n \\draw[->]" ++
-                    "({pic cs:" ++ fst tags ++  -- insert mark name 1
-                    "}) [bend " ++ if rowRelation e f == Far then "left=100" else "right" ++    -- calculate bend direction for arrow
-                    "] node [below, yshift=" ++ "-0.1" ++ -- calculate yshift for caption
-                    "cm, xshift=" ++ "0.5" ++ -- calculate xshift for caption
-                    "cm]{\\footnotesize{" ++ name ++  -- get relation name
-                    "}} to ({pic cs:" ++ snd tags ++  -- insert mark name 2
-                    "});\n \\end{tikzpicture} \n"
-    where tags = makeTag e f
-
-makeTag :: Event -> Event -> (String, String)  -- generates two tags like this: "l13" (=tag at the left of event 13), "r16"
-makeTag e f = case rowRelation e f of
-                Far -> ("r" ++ show (loc e), "r" ++ show (loc f))
-                Next -> ("r" ++ show (loc e), "l" ++ show (loc f))
-                Same -> ("l" ++ show (loc e), "l" ++ show (loc f))
+---------- converters to latex code ----------
 
 markL :: String -> String
 markL s = " \\tikzmark{" ++ s ++ "}"
@@ -154,4 +147,44 @@ eventL Event{op=(Read x)} = "\\readE{" ++ show x ++ "}"
 eventL Event{op=(Write x)} = "\\writeE{" ++ show x ++ "}"
 eventL Event{op=(Acquire x)} = "\\lockE{" ++ show x ++ "}"
 eventL Event{op=(Release x)} = "\\unlockE{" ++ show x ++ "}"
-eventL _ = ""  -- covers fork and join, which should have already been filtered out earlier
+eventL _ = ""  -- covers fork and join, but currently they are already filtered out beforehand
+
+
+-- helpers for latex commands
+
+-- generate tikzpicture block for arrows. Relation name currently disabled, because positioning can't be automated easily
+tikzL :: Event -> Event -> String -> String
+tikzL e f name = "\n \\begin{tikzpicture}[overlay, remember picture, yshift=.25\\baselineskip, shorten >=.5pt, shorten <=.5pt]\n \\draw[->]" ++
+                    "({pic cs:" ++ fst tags ++                        -- insert mark name 1
+                    "}) [bend " ++ chooseBend (rowRelation e f) ++    -- calculate bend direction for arrow
+                    "] node [below, yshift=" ++ "-0.1" ++             -- calculate yshift for caption (currently constant)
+                    "cm, xshift=" ++ "0.5" ++                         -- calculate xshift for caption (currently constant)
+                    "cm]{\\footnotesize{" ++ -- name ++               -- get relation name (currently disabled)
+                    "}} to ({pic cs:" ++ snd tags ++                  -- insert mark name 2
+                    "});\n \\end{tikzpicture} \n"
+    where tags = makeTag e f
+          chooseBend FarR  = "left=100"
+          chooseBend FarL  = "right=100"
+          chooseBend NextL = "left"
+          chooseBend _     = "right"
+
+---------- helper functions for latex printing ----------
+
+data RowRelation = FarR | FarL | NextR | NextL | Same  deriving Eq
+
+-- determines if two events are in threads that would be next to each other in table
+rowRelation :: Event -> Event -> RowRelation
+rowRelation Event{thread=t1} Event{thread=t2} = case unThread t1 - unThread t2 of
+                                                0    -> Same
+                                                1    -> NextL
+                                                (-1) -> NextR
+                                                x -> if x > 0 then FarL else FarR
+
+-- generates two tags based on which rows the events are in. Tags look like in this example: "l13" (=tag at the left of event 13)
+makeTag :: Event -> Event -> (String, String)
+makeTag e f = case rowRelation e f of
+                FarR  -> ("r" ++ show (loc e), "r" ++ show (loc f))
+                FarL  -> ("l" ++ show (loc e), "l" ++ show (loc f))
+                NextR -> ("r" ++ show (loc e), "l" ++ show (loc f))
+                NextL -> ("l" ++ show (loc e), "r" ++ show (loc f))
+                Same  -> ("l" ++ show (loc e), "l" ++ show (loc f))
