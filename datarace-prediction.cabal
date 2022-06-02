@@ -30,6 +30,6 @@ executable datarace-prediction
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.13.0.0, HaTeX, mtl, containers
+    build-depends:    base ^>=4.13.0.0, mtl, containers
     hs-source-dirs:   app, .
     default-language: Haskell2010

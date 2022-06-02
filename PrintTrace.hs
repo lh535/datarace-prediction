@@ -1,6 +1,5 @@
 module PrintTrace where
 
-import Text.LaTeX  -- currently unused, since we're not generating full documents. Keep in consideration?
 import Data.Map (Map)
 import Data.Set (Set)
 import qualified Data.Map as M
