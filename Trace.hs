@@ -92,28 +92,3 @@ exampleTrace =
    joinE t0 t1,
    relE t0 y
    ]
-
--------------------------------------------------------
--- tools for printing traces
-
--- Tabular display, can be used for markdown.
-toMD :: [Event] -> String
-toMD = toMDExtra ("", \_ -> "")
-
--- General version where we can add some extra row.
-toMDExtra :: (String, Event -> String) -> [Event] -> String
-toMDExtra (lastRow, genLast) es =
-  let firstRow = 4
-      row = 15
-      adj row xs
-       | length xs >= row = error "fix row size"
-       | otherwise = xs ++ replicate (row - length xs) ' '
-      m = maximum $ map (\e -> unThread $ thread e) es
-  in
-    foldl (\s -> \e -> let l = show (loc e) ++ "."
-                           i = unThread $ thread e
-                           r = adj firstRow l ++ replicate (row * i) ' '
-                               ++ adj row (show (op e)) ++ replicate (row * (m-i)) ' ' ++ genLast e
-                       in s ++ "\n" ++ r)
-          (concat $ ["   "] ++ [adj row ("T" ++ show i) | i <- [0..m]] ++ [adj row lastRow])
-          es

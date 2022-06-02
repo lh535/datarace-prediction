@@ -11,7 +11,6 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Trace
-import Examples
 
 ---------- data definitions ----------
 
@@ -226,9 +225,6 @@ instance Show HistEl where
 instance Show EventVC where
     show (EventVC c) = M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ "\n" ++ r) "" c
 
-annotatedWithPWR trace = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
-
-annotatedWithPWRSet trace =  putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ allRelatedEvents (pwr trace) M.! e) trace
 
 ---------- Tests ----------
 
