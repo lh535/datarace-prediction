@@ -1,6 +1,4 @@
 {-# LANGUAGE GADTs, GeneralisedNewtypeDeriving #-}
-{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
-{-# HLINT ignore "Use tuple-section" #-}
 
 -- Current naming: v/w for vector clock, c for clock dictionary, i/j for threads, y for locks, x for vars
 

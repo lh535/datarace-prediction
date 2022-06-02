@@ -26,6 +26,23 @@ annotatedWithPWRSet :: [Event] -> IO ()
 annotatedWithPWRSet t =  putStrLn $ toMDExtra ("PWR Set", \e -> setShow $ allRelatedEvents (pwr trace) M.! e) trace
     where trace = addLoc t
 
+-- markdown printing where you can choose which events should be included in relation pwr relation sets
+-- note that only chosen events show their PWR Sets, and only chosen events are in those sets as well
+interactivePWRSet :: [Event] -> IO()
+interactivePWRSet t = do
+    let trace = addLoc t
+    let pwrSets = allRelatedEvents $ pwr trace
+    toMD t False
+    putStrLn "\n Choose Events to show PWR relation for (type event locations, separated by a space):"
+    nums <- getLine
+    let numList = map (Loc . read) (words nums)
+    let filteredTrace = filter (\e -> loc e `elem` numList) trace
+    let filteredMap = M.filterWithKey (\e _ -> loc e `elem` numList) pwrSets
+    let filteredSets = M.map (S.filter (\e -> loc e `elem` numList)) filteredMap
+    putStrLn $ toMDExtra ("PWR Set", \e -> setShow $ filteredSets M.! e) filteredTrace
+
+
+
 -- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
 latexTrace :: [Event] -> IO ()
 latexTrace = putStrLn . toLatex S.empty "" . addLoc . removeFork
@@ -41,7 +58,7 @@ interactiveLatexPWR :: [Event] -> IO ()
 interactiveLatexPWR t = do
     let trace = addLoc t
     toMD trace False
-    putStrLn "these are the pairs of Events in the PWR Relation. Type index of pairs to include in latex graphic, separated by a space"
+    putStrLn "\nThese are the pairs of Events in the PWR Relation. Type index of pairs to include in latex graphic, separated by a space"
     let pwrList = zip [1..] (S.toList (delPairFork $ pwrPairs $ pwr trace))
     putStrLn $ foldl (\r e -> r ++ show (fst e) ++ ": " ++ show (snd e) ++ "\n") "" pwrList
     nums <- getLine
@@ -67,7 +84,8 @@ isForkJoin _ = False
 
 -- helper for set printing
 setShow :: Set Event -> String
-setShow s = tail $ tail $ S.foldl (\r e -> r ++ ", " ++ show e) "" s
+setShow s | s == S.empty = ""
+          | otherwise = tail $ tail $ S.foldl (\r e -> r ++ ", " ++ show e) "" s
 
 ---------- Markdown Printing ----------
 -- (mostly inspired by existing work from souce/Trace.hs)
@@ -148,8 +166,6 @@ eventL Event{op=(Acquire x)} = "\\lockE{" ++ show x ++ "}"
 eventL Event{op=(Release x)} = "\\unlockE{" ++ show x ++ "}"
 eventL _ = ""  -- covers fork and join, but currently they are already filtered out beforehand
 
-
--- helpers for latex commands
 
 -- generate tikzpicture block for arrows. Relation name currently disabled, because positioning can't be automated easily
 tikzL :: Event -> Event -> String -> String

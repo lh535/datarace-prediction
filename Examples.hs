@@ -3,7 +3,6 @@ module Examples where
 import Trace
 
 -- for now: just copy-pasted old examples.
--- TODO: clean this up
 
 -- NOTE:
 -- There's always a main thread.
