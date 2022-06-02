@@ -110,6 +110,9 @@ relatedEvents e v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.inser
 allRelatedEvents :: EventVC -> Map Event (Set Event)
 allRelatedEvents c = M.mapWithKey (\e v -> relatedEvents e v c) (clocks c)
 
+-- compute set of all race pairs from PWR relation
+racePairs :: EventVC -> Set (Event, Event)
+racePairs = undefined  -- only compare with ones afterwards, or only save with first event
 
 ---------- functions for every type of event ----------
 
