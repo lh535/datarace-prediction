@@ -21,17 +21,21 @@ annotatedWithPWR :: [Event] -> IO ()
 annotatedWithPWR t = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
     where trace = addLoc t
 
--- markdown printing for PWR - Sets. Always includes fork/join for now
-annotatedWithPWRSet :: [Event] -> IO ()
-annotatedWithPWRSet t =  putStrLn $ toMDExtra ("PWR Set", \e -> setShow $ allRelatedEvents (pwr trace) M.! e) trace
+-- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
+annotatedSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO ()
+annotatedSet t f name = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
     where trace = addLoc t
 
--- markdown printing where you can choose which events should be included in relation pwr relation sets
--- note that only chosen events show their PWR Sets, and only chosen events are in those sets as well
-interactivePWRSet :: [Event] -> IO()
-interactivePWRSet t = do
+-- markdown printing for PWR - Sets.
+annotatedWithPWRSet :: [Event] -> IO ()
+annotatedWithPWRSet t = annotatedSet t (allRelatedEvents . pwr) "PWR Set"
+
+-- markdown printing where you can choose which events should be included in relation sets
+-- note that only chosen events show their sets, and only chosen events are in those sets as well
+interactiveSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO()
+interactiveSet t f name = do
     let trace = addLoc t
-    let pwrSets = allRelatedEvents $ pwr trace
+    let pwrSets = f trace
     toMD t False
     putStrLn "\n Choose Events to show PWR relation for (type event locations, separated by a space):"
     nums <- getLine
@@ -39,8 +43,10 @@ interactivePWRSet t = do
     let filteredTrace = filter (\e -> loc e `elem` numList) trace
     let filteredMap = M.filterWithKey (\e _ -> loc e `elem` numList) pwrSets
     let filteredSets = M.map (S.filter (\e -> loc e `elem` numList)) filteredMap
-    putStrLn $ toMDExtra ("PWR Set", \e -> setShow $ filteredSets M.! e) filteredTrace
+    putStrLn $ toMDExtra (name, \e -> setShow $ filteredSets M.! e) filteredTrace
 
+interactivePWRSet :: [Event] -> IO ()
+interactivePWRSet t = interactiveSet t (allRelatedEvents . pwr) "PWR Sets"
 
 
 -- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
@@ -50,8 +56,8 @@ latexTrace = putStrLn . toLatex S.empty "" . addLoc . removeFork
 -- latex printing for example 1, using pre-defined set for arrow.
 -- shows usage of toLatex: a Set with Relations, a relation name and a valid trace must be passed as arguments
 ex1Set = S.singleton ((wrE (Thread 1) (Var "x")){loc = Loc 2}, (rdE (Thread 1) (Var "x")){loc = Loc 4})
-latexEx1 :: [Event] -> IO ()
-latexEx1 = putStrLn . toLatex ex1Set "PWR" . addLoc
+latexEx1 :: IO ()
+latexEx1 = (putStrLn . toLatex ex1Set "PWR" . addLoc) ex1
 
 -- latex printing for PWR:
 interactiveLatexPWR :: [Event] -> IO ()
