@@ -11,6 +11,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 import Trace
+import PrintTrace
 
 ---------- data definitions ----------
 
@@ -29,40 +30,6 @@ data PWRGlobal = PWRGlobal { lockS       :: Map Thread (Set Lock),         -- cu
 
 -- return type: maps vector clock to every event
 newtype EventVC = EventVC {clocks :: Map Event VClock}
-
----------- general helper functions ----------
-
--- initialize vector clock for n threads: time stamp 0 for all threads except current thread i
-vInit :: Int -> Int -> VClock
-vInit n i = VClock $ M.fromList $ map (\j -> (Thread j, if j == i then TStamp 1 else TStamp 0)) [0..(n-1)]
-
--- union for vector clocks (take max of each pair of elements)
-vUnion :: VClock -> VClock -> VClock
-vUnion (VClock v) (VClock w) = VClock $ M.unionWith max v w
-
--- "<" for vector clocks: <= for each time stamp, and not equal (one timestamp must be strictly smaller)
-vBefore :: VClock -> VClock -> Bool
-vBefore (VClock v) (VClock w) = M.isSubmapOfBy (<=) v w && not (M.isSubmapOf w v)
-
--- increment vector clock for one thread by one
-vInc :: Thread -> VClock -> VClock
-vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v
-
--- safe lookup for lookS. Returns empty set if key is not in map
-lockSFind :: Thread -> Map Thread (Set Lock) -> Set Lock
-lockSFind = M.findWithDefault S.empty
-
--- safe lookup for hist. Returns empty list if key is not in map
-histFind :: Lock -> Map Lock [HistEl] -> [HistEl]
-histFind = M.findWithDefault []
-
--- starting state
-emptyState :: PWRGlobal
-emptyState = PWRGlobal {lockS = M.empty,
-                        vClocks = M.fromList [(Thread 0, vInit 1 0)],
-                        lastW = M.empty,
-                        acq = M.empty,
-                        hist = M.empty}
 
 ---------- PWR ----------
 
@@ -213,6 +180,19 @@ forkAddClock t call_t c = M.insert t (vInc t (c M.! call_t)) c
 
 ---------- Printing ----------
 
+-- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
+annotatedWithPWR :: [Event] -> IO ()
+annotatedWithPWR t = annotTrace t (clocks . pwr) "Vector Clocks"
+
+-- markdown printing for PWR - Sets.
+annotatedWithPWRSet :: [Event] -> IO ()
+annotatedWithPWRSet t = annotTrace t (allRelatedEvents . pwr) "PWR Set"
+
+interactivePWRSet :: [Event] -> IO ()
+interactivePWRSet t = interactiveSet t (allRelatedEvents . pwr) "PWR Sets"
+
+interactiveLatexPWR t = interactiveLatex t (pwrPairs . pwr)
+
 instance Show TStamp where
     show (TStamp i) = show i
 
@@ -228,15 +208,36 @@ instance Show HistEl where
 instance Show EventVC where
     show (EventVC c) = M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ "\n" ++ r) "" c
 
+---------- general helper functions ----------
 
----------- Tests ----------
+-- initialize vector clock for n threads: time stamp 0 for all threads except current thread i
+vInit :: Int -> Int -> VClock
+vInit n i = VClock $ M.fromList $ map (\j -> (Thread j, if j == i then TStamp 1 else TStamp 0)) [0..(n-1)]
 
--- Didn't think of good values, just put in something to see if it works at all
-syncClockTest :: VClock
-syncClockTest = let v1 = VClock $ M.fromList [(Thread 0, TStamp 0), (Thread 1, TStamp 0)]
-                    v2 = VClock $ M.fromList [(Thread 0, TStamp 3), (Thread 1, TStamp 2)]
-                    v3 = VClock $ M.fromList [(Thread 0, TStamp 2), (Thread 1, TStamp 10)]
-                    e1 = Epoch (Thread 0) (TStamp 3)
-                    e2 = Epoch (Thread 1) (TStamp 2)
-                    h = [HistEl e1 v1, HistEl e2 v2]
-                 in syncClock v3 h
+-- union for vector clocks (take max of each pair of elements)
+vUnion :: VClock -> VClock -> VClock
+vUnion (VClock v) (VClock w) = VClock $ M.unionWith max v w
+
+-- "<" for vector clocks: <= for each time stamp, and not equal (one timestamp must be strictly smaller)
+vBefore :: VClock -> VClock -> Bool
+vBefore (VClock v) (VClock w) = M.isSubmapOfBy (<=) v w && not (M.isSubmapOf w v)
+
+-- increment vector clock for one thread by one
+vInc :: Thread -> VClock -> VClock
+vInc i (VClock v) = VClock $ M.adjust (+ TStamp 1) i v
+
+-- safe lookup for lookS. Returns empty set if key is not in map
+lockSFind :: Thread -> Map Thread (Set Lock) -> Set Lock
+lockSFind = M.findWithDefault S.empty
+
+-- safe lookup for hist. Returns empty list if key is not in map
+histFind :: Lock -> Map Lock [HistEl] -> [HistEl]
+histFind = M.findWithDefault []
+
+-- starting state
+emptyState :: PWRGlobal
+emptyState = PWRGlobal {lockS = M.empty,
+                        vClocks = M.fromList [(Thread 0, vInit 1 0)],
+                        lastW = M.empty,
+                        acq = M.empty,
+                        hist = M.empty}

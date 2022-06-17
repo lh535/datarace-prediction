@@ -7,7 +7,6 @@ import qualified Data.Set as S
 import Data.List (find)
 
 import Trace
-import PWR
 import Examples
 
 -- NOTE: for all functions, addLoc is applied to traces automatically!
@@ -16,19 +15,14 @@ import Examples
 toMD :: [Event] -> Bool -> IO ()
 toMD t b = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
 
--- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
-annotatedWithPWR :: [Event] -> IO ()
-annotatedWithPWR t = putStrLn $ toMDExtra ("Vector Clocks", \e -> show $ clocks (pwr trace) M.! e) trace
-    where trace = addLoc t
-
 -- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
-annotatedSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO ()
-annotatedSet t f name = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
+annotTrace :: Show a => [Event] -> ([Event] -> Map Event a) -> String -> IO ()
+annotTrace t f name = putStrLn $ toMDExtra (name, \e -> show $ f trace M.! e) trace
     where trace = addLoc t
 
--- markdown printing for PWR - Sets.
-annotatedWithPWRSet :: [Event] -> IO ()
-annotatedWithPWRSet t = annotatedSet t (allRelatedEvents . pwr) "PWR Set"
+annotTraceSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO ()
+annotTraceSet t f name = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
+    where trace = addLoc t
 
 -- markdown printing where you can choose which events should be included in relation sets
 -- note that only chosen events show their sets, and only chosen events are in those sets as well
@@ -45,9 +39,6 @@ interactiveSet t f name = do
     let filteredSets = M.map (S.filter (\e -> loc e `elem` numList)) filteredMap
     putStrLn $ toMDExtra (name, \e -> setShow $ filteredSets M.! e) filteredTrace
 
-interactivePWRSet :: [Event] -> IO ()
-interactivePWRSet t = interactiveSet t (allRelatedEvents . pwr) "PWR Sets"
-
 
 -- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
 latexTrace :: [Event] -> IO ()
@@ -60,12 +51,13 @@ latexEx1 :: IO ()
 latexEx1 = (putStrLn . toLatex ex1Set "PWR" . addLoc) ex1
 
 -- latex printing for PWR:
-interactiveLatexPWR :: [Event] -> IO ()
-interactiveLatexPWR t = do
+-- NOTE: All release order dependency
+interactiveLatex :: [Event] -> ([Event] -> Set (Event, Event)) -> IO ()
+interactiveLatex t f = do
     let trace = addLoc t
     toMD trace False
-    putStrLn "\nThese are the pairs of Events in the PWR Relation. Type index of pairs to include in latex graphic, separated by a space"
-    let pwrList = zip [1..] (S.toList (delPairFork $ pwrPairs $ pwr trace))
+    putStrLn "\nThese are the pairs of Events in the Relation. Type index of pairs to include in latex graphic, separated by a space"
+    let pwrList = zip [1..] (S.toList (delPairFork $ f trace))
     putStrLn $ foldl (\r e -> r ++ show (fst e) ++ ": " ++ show (snd e) ++ "\n") "" pwrList
     nums <- getLine
     let numList = map read (words nums)
