@@ -61,9 +61,9 @@ The following is an overview of the most important functions that are provided.
 
 ### Markdown
 - `toMD remFork t` : prints a tabular markdown representation of a trace `t`. If `remFork` is True, fork/join is removed.
-- `annotTrace f name t` : like with `toMD`, a trace `t` is printed. Additionally, a function `f :: Show a => ([Event] -> Map Event a)` and a String `name` should be supplied;  this will be used for an additional column of information.  
+- `annotTrace f fShow name t` : like with `toMD`, a trace `t` is printed. Additionally, a function `f :: Show a => ([Event] -> Map Event a)` should be supplied, which computes relations between events. `f_show :: a -> String` is a function to show the result of f, and can be just `show` if `a` is an instance of Show. Lastly, String `name` is used as a column name. All this information will be used for an additional column of information on the left of the trace.  
 (Note: this is the only function where f can return a map to arbitrary types of values)
-- `annotTraceSet f name t` : the same as `annotTrace`, but with `f :: ([Event] -> Map Event (Set Event))`. The benefit of using this specific function over `annotTrace` is that Sets are printed in a more readable way automatically.
+- `annotTraceSet f f_show name t` : the same as `annotTrace`, but without `fShow`. A predefined function for printing sets is used instead, therefore `f` also has to map to sets.
 - `interactiveSet f name t` : The same as `annotTraceSet`, but as an interactive prompt where you can choose which events to show the relation for. The events can be chosen by inputing the corresponding location numbers after the prompt. For example, `1 3 10` would later show the fist, third and tenth event.  
 Invalid input leads to an error! Invalid input includes letters, symbols, and numbers that do not have an associated event.  
 Only the chosen events will be shown in the markdown table, and the relation set will also only contain events that were chosen.

@@ -16,13 +16,14 @@ toMD :: Bool -> [Event] -> IO ()
 toMD b t = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
 
 -- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
+-- f is function to compute relation, show_f is show function for result of f
 annotTrace :: ([Event] -> Map Event a) -> (a -> String) -> String -> [Event] -> IO ()
-annotTrace f show_f name t = putStrLn $ toMDExtra (name, \e -> show_f $ f trace M.! e) trace
+annotTrace f fShow name t = putStrLn $ toMDExtra (name, \e -> fShow $ f trace M.! e) trace
     where trace = addLoc t
 
+-- specialized version of annotTrace which uses setShow
 annotTraceSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO ()
-annotTraceSet f name t = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
-    where trace = addLoc t
+annotTraceSet f = annotTrace f setShow
 
 -- markdown printing where you can choose which events should be included in relation sets
 -- note that only chosen events show their sets, and only chosen events are in those sets as well
