@@ -77,9 +77,9 @@ relatedEvents e v c = M.foldlWithKey (\r e' v' -> if v' `vBefore` v then S.inser
 allRelatedEvents :: EventVC -> Map Event (Set Event)
 allRelatedEvents c = M.mapWithKey (\e v -> relatedEvents e v c) (clocks c)
 
--- compute set of all pairs of events from PWR relation
-pwrPairs :: EventVC -> Set (Event, Event)
-pwrPairs c = M.foldlWithKey (\r e v -> S.union r (S.map (\evt -> (evt, e)) (relatedEvents e v c))) S.empty (clocks c)
+-- directly computes set of events in relation, from trace
+pwrSet :: [Event] -> Map Event (Set Event)
+pwrSet = allRelatedEvents . pwr
 
 ---------- functions for every type of event ----------
 
@@ -182,16 +182,16 @@ forkAddClock t call_t c = M.insert t (vInc t (c M.! call_t)) c
 
 -- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
 annotatedWithPWR :: [Event] -> IO ()
-annotatedWithPWR t = annotTrace t (clocks . pwr) "Vector Clocks"
+annotatedWithPWR = annotTrace (clocks . pwr) "Vector Clocks"
 
 -- markdown printing for PWR - Sets.
 annotatedWithPWRSet :: [Event] -> IO ()
-annotatedWithPWRSet t = annotTrace t (allRelatedEvents . pwr) "PWR Set"
+annotatedWithPWRSet = annotTraceSet pwrSet "PWR Set"
 
-interactivePWRSet :: [Event] -> IO ()
-interactivePWRSet t = interactiveSet t (allRelatedEvents . pwr) "PWR Sets"
+interactivePWR :: [Event] -> IO ()
+interactivePWR = interactiveSet pwrSet "PWR Sets"
 
-interactiveLatexPWR t = interactiveLatex t (pwrPairs . pwr)
+interactiveLatexPWR = interactiveLatex (allRelatedEvents . pwr)
 
 instance Show TStamp where
     show (TStamp i) = show i

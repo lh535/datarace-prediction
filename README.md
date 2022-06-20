@@ -6,20 +6,20 @@ to annotate and print traces in Markdown or Latex format.
 ## Table of Contents
 * [Modules](#modules)
 * [Traces](#traces)
-  * [Example](#example)
-* [PWR](#pwr)
 * [Printing](#printing)
   * [Markdown](#markdown)
   * [Latex](#latex)
+    * [Imports and Macros](#imports)
+* [PWR](#pwr)
 
 ## Modules
 It is not necessary to build the project, the needed files can just be copied over.  
 Here is an overview of what the available files contain:
-- Trace.hs defines a language for creating traces. More details on how to define traces are in the next section.
-- Examples.hs contains examples of Traces that can be used for testing
-- PrintTrace.hs contains functions for printing traces in markdown and latex, and the option to annotate these traces with information
-from a general race prediction algorithm (such as PWR, Happens-Before or Lockset).
-- PWR.hs contains the algorithm for computing the PWR relation. It is generalized to work with both sets and vector clocks. There are also specialized versions of the printing functions defined in PrintTrace.hs, which use PWR as the algorithm for annotating the trace.
+- `Trace.hs` defines a language for creating traces. More details on how to define traces are in the next section. This file is imported by all others.
+- `Examples.hs` contains examples of Traces that can be used for testing
+- `PrintTrace.hs` contains functions for printing traces in markdown and latex, and the option to annotate these traces with information
+from algorithm that compute a relation on events (such as PWR, Happens-Before or Lockset). It imports `Examples`.
+- `PWR.hs` contains the algorithm for computing the PWR relation. It is generalized to work with both sets and vector clocks. There are also specialized versions of the printing functions defined in PrintTrace.hs, which use PWR as the algorithm for annotating the trace. It imports `PrintTrace`.
 
 
 ## Traces
@@ -33,22 +33,88 @@ Traces are represented as a list of Events. There are six types of events used: 
 
 
 We start counting threads at 0, where thread 0 is the main thread. Every Trace must contain a main thread. There are functions for creating threads:  
-`mainThread` has no arguments and returns the main thread. `nextThread` takes a thread and returns a thread with an incremented index number
+`mainThread` has no arguments and returns the main thread. `nextThread t` takes a thread t and returns a thread with an incremented index number.
 
 
 Each Event also should have a location number, however the functions above do not automatically add this location number.  
-To add correct location numbers to a trace, `addLoc` can be used, which takes and returns a trace (=list of events).  
+To add correct location numbers to a trace, `addLoc t` can be used, which takes a trace t and returns a trace (=list of events).  
 Many of the printing functions apply `addLoc` automatically for convenience, however it also isn't problematic to apply it multiple times.
 
-### Example
+
+Lastly, an example for how to define a trace:  
+```
+ex1 =
+  let t0 = mainThread
+      t1 = nextThread t0
+      x = Var "x"
+  in [ forkE t0 t1,
+                    wrE t1 x,      -- w1
+       wrE t0 x,                   -- w2
+                    rdE t1 x       -- r3
+     ]
+```
+More examples can be found in Examples.hs.
+
+## Printing
+General functions for printing traces in Markdown and Latex can be found in PrintTrace.hs. If the trace is supposed to be annotated with a relation, usually a function f that takes a trace (=list of events) and returns a map from events to a set of events has to be supplied.  
+The following is an overview of the most important functions that are provided.
+
+### Markdown
+- `toMD remFork t` : prints a tabular markdown representation of a trace `t`. If `remFork` is True, fork/join is removed.
+- `annotTrace f name t` : like with `toMD`, a trace `t` is printed. Additionally, a function `f :: Show a => ([Event] -> Map Event a)` and a String `name` should be supplied;  this will be used for an additional column of information.  
+(Note: this is the only function where f can return a map to arbitrary types of values)
+- `annotTraceSet f name t` : the same as `annotTrace`, but with `f :: ([Event] -> Map Event (Set Event))`. The benefit of using this specific function over `annotTrace` is that Sets are printed in a more readable way automatically.
+- `interactiveSet f name t` : The same as `annotTraceSet`, but as an interactive prompt where you can choose which events to show the relation for. The events can be chosen by inputing the corresponding location numbers after the prompt. For example, `1 3 10` would later show the fist, third and tenth event.  
+Invalid input leads to an error! Invalid input includes letters, symbols, and numbers that do not have an associated event.  
+Only the chosen events will be shown in the markdown table, and the relation set will also only contain events that were chosen.
+
+
+Example of Markdown representation of ex1, annotated with PWR sets:  
+``` 
+> annotTraceSet (allRelatedEvents . pwr) "PWR Set"
+
+   T0        T1        PWR Set
+1.  fork(t1)            
+2.            wr(x)     fork(t1)_1
+3.  wr(x)               fork(t1)_1
+4.            rd(x)     fork(t1)_1, wr(x)_2, wr(x)_3
+```
+
+### Latex
+A number of imports and macros is being used in the latex code. They are listed the "Imports" section.
+- `latexTrace remFork t` : prints latex code that displays the trace `t` as a string. If `remFork` is True, fork/join is omitted in the output.
+- `interactiveLatex f t` : prints latex code for Trace `t`, but can add arrows between events that are in relation. The function `f` has to have the type `f :: [Event] -> Map Event (Set Event)` again. There are multiple prompts: The first asks if fork/join should be included, the second if arrows should be drawn for everything that is in relation (y) or not (n).  
+If "n" is chosen for the second option, a numbered list of every relation pair is shown. The numbers can be used to choose which arrows should be drawn in the latex graph. Invalid input at this point leads to an error! Invalid input includes letters, symbols, and numbers that do not have an associated pair.  
+
+### Imports
+```
+\usepackage{tikz}
+\usetikzlibrary{tikzmark}
+\usetikzlibrary{arrows,automata}
+\usetikzlibrary{trees,shapes,decorations}
+
+\newcommand{\thread}[2]{#1 \sharp #2}
+\newcommand{\lockE}[1]{\mathit{acq}(#1)}
+\newcommand{\unlockE}[1]{\mathit{rel}(#1)}
+\newcommand{\readE}[1]{r(#1)}
+\newcommand{\writeE}[1]{w(#1)}
+\newcommand{\forkE}[1]{fork(#1)}
+\newcommand{\joinE}[1]{join(#1)}
+
+
+\newcommand{\ba}{\begin{array}}
+\newcommand{\ea}{\end{array}}
+\newcommand{\bda}{\[\ba}
+\newcommand{\eda}{\ea\]}
+```
 
 ## PWR
 This module can be used to compute the PWR relation.  
-(TODO: finish writing this after generalizing pwr)
-
-## Printing
+`pwr` computes pwr with a map from events vector clocks as a result, `pwrSet` with a map from events to sets of events that come before in the relation.
 
 
-### Markdown
-
-### Latex
+There are also specialized functions for pwr printing:  
+- `annotatedWithPWR t` prints a markdown table of the trace t and the pwr vector clocks
+- `annotatedWithPWRSet t` prints a markdown table of the trace t and the pwr sets
+- `interactivePWR t` is the PWR version of `interactiveSet` and can print markdown for only some events. See section about markdown printing for more details.
+- `interactiveLatexPWR t` can print latex code of the trace t, with the option to add arrows for events that are in the pwr relation. See section about latex printing for more details. 

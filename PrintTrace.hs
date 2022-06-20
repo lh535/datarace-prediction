@@ -12,26 +12,26 @@ import Examples
 -- NOTE: for all functions, addLoc is applied to traces automatically!
 
 -- Markdown Printing of Traces. If 2nd argument is true, fork/join are omitted
-toMD :: [Event] -> Bool -> IO ()
-toMD t b = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
+toMD :: Bool -> [Event] -> IO ()
+toMD b t = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
 
 -- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
-annotTrace :: Show a => [Event] -> ([Event] -> Map Event a) -> String -> IO ()
-annotTrace t f name = putStrLn $ toMDExtra (name, \e -> show $ f trace M.! e) trace
+annotTrace :: Show a => ([Event] -> Map Event a) -> String -> [Event] -> IO ()
+annotTrace f name t = putStrLn $ toMDExtra (name, \e -> show $ f trace M.! e) trace
     where trace = addLoc t
 
-annotTraceSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO ()
-annotTraceSet t f name = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
+annotTraceSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO ()
+annotTraceSet f name t = putStrLn $ toMDExtra (name, \e -> setShow $ f trace M.! e) trace
     where trace = addLoc t
 
 -- markdown printing where you can choose which events should be included in relation sets
 -- note that only chosen events show their sets, and only chosen events are in those sets as well
-interactiveSet :: [Event] -> ([Event] -> Map Event (Set Event)) -> String -> IO()
-interactiveSet t f name = do
+interactiveSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO()
+interactiveSet f name t = do
     let trace = addLoc t
     let pwrSets = f trace
-    toMD t False
-    putStrLn "\n Choose Events to show PWR relation for (type event locations, separated by a space):"
+    toMD False t
+    putStrLn "\n Choose Events to show relation for (type event locations, separated by a space):"
     nums <- getLine
     let numList = map (Loc . read) (words nums)
     let filteredTrace = filter (\e -> loc e `elem` numList) trace
@@ -41,35 +41,47 @@ interactiveSet t f name = do
 
 
 -- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
-latexTrace :: [Event] -> IO ()
-latexTrace = putStrLn . toLatex S.empty "" . addLoc . removeFork
+latexTrace :: Bool -> [Event] -> IO ()
+latexTrace remFork = putStrLn . toLatex S.empty "" remFork . addLoc . removeFork
 
--- latex printing for example 1, using pre-defined set for arrow.
--- shows usage of toLatex: a Set with Relations, a relation name and a valid trace must be passed as arguments
+-- latex printing for example 1, using pre-defined set for arrows. Filters out Fork/Join
+-- shows usage of toLatex: a Set with Relations, a relation name, a bool to decide if fork/join should be removed, and a valid trace must be passed as arguments
 ex1Set = S.singleton ((wrE (Thread 1) (Var "x")){loc = Loc 2}, (rdE (Thread 1) (Var "x")){loc = Loc 4})
 latexEx1 :: IO ()
-latexEx1 = (putStrLn . toLatex ex1Set "PWR" . addLoc) ex1
+latexEx1 = (putStrLn . toLatex ex1Set "PWR" True . addLoc) ex1
 
--- latex printing for PWR:
--- NOTE: All release order dependency
-interactiveLatex :: [Event] -> ([Event] -> Set (Event, Event)) -> IO ()
-interactiveLatex t f = do
+-- latex printing for a relation function:
+interactiveLatex :: ([Event] -> Map Event (Set Event)) -> [Event] -> IO ()
+interactiveLatex f t = do
+    let fPair = makePairs . f
     let trace = addLoc t
-    toMD trace False
-    putStrLn "\nThese are the pairs of Events in the Relation. Type index of pairs to include in latex graphic, separated by a space"
-    let pwrList = zip [1..] (S.toList (delPairFork $ f trace))
-    putStrLn $ foldl (\r e -> r ++ show (fst e) ++ ": " ++ show (snd e) ++ "\n") "" pwrList
-    nums <- getLine
-    let numList = map read (words nums)
-    let filteredList = filter (\e -> fst e `elem` numList) pwrList
-    let filteredSet = foldl (\r e -> S.insert (snd e) r) S.empty filteredList
-    putStrLn $ "\n" ++ toLatex filteredSet "PWR" trace
+    toMD False trace
+    putStrLn "\nDo you want to remove fork/join? (y/n)"
+    decideFork <- getLine
+    let relList = delSameThread $ if decideFork == "y" then delPairFork $ fPair trace else fPair trace
+    putStrLn "Do you want to include all possible pairs? (y/n)"
+    decideAll <- getLine
+    if decideAll == "n"
+        then do putStrLn "\nThese are the pairs of Events in the Relation. Type index of pairs to include in latex graphic, separated by a space.\n"
+                let numberedList = zip [1..] (S.toList relList)
+                putStrLn $ foldl (\r e -> r ++ show (fst e) ++ ": " ++ show (snd e) ++ "\n") "" numberedList
+                nums <- getLine
+                let numList = map read (words nums)
+                let filteredList = filter (\e -> fst e `elem` numList) numberedList
+                let filteredSet = foldl (\r e -> S.insert (snd e) r) S.empty filteredList
+                putStrLn $ "\n\n" ++ toLatex filteredSet "PWR" False trace
+        else do putStrLn $ "\n\n" ++ toLatex relList "PWR" True trace
+
 
 ---------- misc utility functions ----------
 
 -- delete pairs that include fork/join from a set of relation pairs
 delPairFork :: Set (Event, Event) -> Set (Event, Event)
 delPairFork = S.filter (\e -> (not . isForkJoin . fst) e && (not . isForkJoin . snd) e)
+
+-- delete pairs that are in relation because of program order (=in same thread)
+delSameThread :: Set (Event, Event) -> Set (Event, Event)
+delSameThread = S.filter (\e -> uncurry rowRelation e /= Same)
 
 -- remove fork/join from trace - used before addLoc. Can't be applied to traces used in pwr computation
 removeFork :: [Event] -> [Event]
@@ -84,6 +96,10 @@ isForkJoin _ = False
 setShow :: Set Event -> String
 setShow s | s == S.empty = ""
           | otherwise = tail $ tail $ S.foldl (\r e -> r ++ ", " ++ show e) "" s
+
+-- creates set of event pairs from mapping of event to set of event
+makePairs :: Map Event (Set Event) -> Set (Event, Event)
+makePairs = M.foldlWithKey (\r e s -> S.union r (S.map (\evt -> (evt, e)) s)) S.empty
 
 ---------- Markdown Printing ----------
 -- (mostly inspired by existing work from souce/Trace.hs)
@@ -107,24 +123,21 @@ toMDExtra (titleLast, genLast) es =
 
 ---------- Latex Printing ----------
 
--- fork/join are removed automatically; this feature could be removed by removing the if-distinction at the end of the function for foldl, 
--- but corresponding latex code for fork/join would have to be added to eventL as well.
-
 -- NOTE: adding the name of the relation to arrows is currently disabled, because adding it in the right place is hard to automate.
 -- it can be re-enabled by removing the comment of "name" in tikzL. In that function, adjustments to arrow formatting can be made as well.
 
 -- string representation of latex code for trace.
--- arguments: Set of Events that should be shown as in relation (=add arrow); name of relation; trace.
-toLatex :: Set (Event, Event) -> String -> [Event] -> String
-toLatex pairs name es =
+-- arguments: Set of Events that should be shown as in relation (=add arrow); name of relation; bool to decide if fork/join should be included; trace.
+toLatex :: Set (Event, Event) -> String -> Bool -> [Event] -> String
+toLatex pairs name removeFork es =
     let firstRow = 4
         m        = maximum (map (unThread . thread) es)
         findRight tags = find (\t -> head t == 'r') tags
         findLeft tags = find (\t -> head t == 'l') tags
         tagListToStrings tags = case (findLeft tags, findRight tags) of
-                                    (Just lt, Just rt) -> (markL lt, markL rt)
-                                    (Just lt, _)       -> (markL lt, "")
-                                    (_, Just rt)       -> ("", markL rt)
+                                    (Just lt, Just rt) -> (markL lt ++ spaceL, markL rt)
+                                    (Just lt, _)       -> (markL lt ++ spaceL, "")
+                                    (_, Just rt)       -> ("", spaceL ++ markL rt)
                                     _                  -> ("", "")
     in
         unlines (zipWith (++) (["", ""] ++ map (\c -> show c ++ ". & ") [1..]) (lines $  -- to add correct line numbers
@@ -135,7 +148,7 @@ toLatex pairs name es =
                                                             _         -> r) [] pairs
                            (tagLeft, tagRight) = tagListToStrings tags
                            r = replicate i '&' ++ tagLeft ++ eventL e ++ tagRight ++ replicate (m-i) '&'
-                       in if isForkJoin e then s else s ++ "\n" ++ r ++ lineL)  -- don't add line if it's fork/join event
+                       in if removeFork && isForkJoin e then s else s ++ "\n" ++ r ++ lineL)  -- don't add line if it's fork/join event
         (bdaL m ++ concat [" & " ++ threadL i | i <- [1..m+1]] ++ lineL ++ "\\hline")
         es))
         ++ edaL ++ S.foldl (\r evts -> uncurry tikzL evts name ++ r) "" pairs  -- adds tikzpicture code afterwards
@@ -144,6 +157,9 @@ toLatex pairs name es =
 
 markL :: String -> String
 markL s = " \\tikzmark{" ++ s ++ "}"
+
+spaceL :: String
+spaceL = " \\hspace{0.2em} "
 
 threadL :: Int -> String
 threadL i = "\\thread{" ++ show i ++ "}"
@@ -162,7 +178,8 @@ eventL Event{op=(Read x)} = "\\readE{" ++ show x ++ "}"
 eventL Event{op=(Write x)} = "\\writeE{" ++ show x ++ "}"
 eventL Event{op=(Acquire x)} = "\\lockE{" ++ show x ++ "}"
 eventL Event{op=(Release x)} = "\\unlockE{" ++ show x ++ "}"
-eventL _ = ""  -- covers fork and join, but currently they are already filtered out beforehand
+eventL Event{op=(Fork t)} = "\\forkE{" ++ tail (show (nextThread t)) ++ "}"
+eventL Event{op=(Join t)} = "\\joinE{" ++ tail (show (nextThread t)) ++ "}"
 
 
 -- generate tikzpicture block for arrows. Relation name currently disabled, because positioning can't be automated easily
@@ -178,7 +195,7 @@ tikzL e f name = "\n \\begin{tikzpicture}[overlay, remember picture, yshift=.25\
     where tags = makeTag e f
           chooseBend FarR  = "left=100"
           chooseBend FarL  = "right=100"
-          chooseBend NextL = "left"
+          chooseBend NextR = "left"
           chooseBend _     = "right"
 
 ---------- helper functions for latex printing ----------
