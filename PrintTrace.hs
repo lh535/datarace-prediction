@@ -16,8 +16,8 @@ toMD :: Bool -> [Event] -> IO ()
 toMD b t = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
 
 -- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
-annotTrace :: Show a => ([Event] -> Map Event a) -> String -> [Event] -> IO ()
-annotTrace f name t = putStrLn $ toMDExtra (name, \e -> show $ f trace M.! e) trace
+annotTrace :: ([Event] -> Map Event a) -> (a -> String) -> String -> [Event] -> IO ()
+annotTrace f show_f name t = putStrLn $ toMDExtra (name, \e -> show_f $ f trace M.! e) trace
     where trace = addLoc t
 
 annotTraceSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO ()
