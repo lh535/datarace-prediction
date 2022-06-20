@@ -8,6 +8,7 @@ import Data.List (find)
 
 import Trace
 import Examples
+import Control.Monad.RWS (MonadState(put))
 
 -- NOTE: for all functions, addLoc is applied to traces automatically!
 
@@ -41,9 +42,9 @@ interactiveSet f name t = do
     putStrLn $ toMDExtra (name, \e -> setShow $ filteredSets M.! e) filteredTrace
 
 
--- latex printing for Traces. Removes fork/join and doesn't draw relation arrows
+-- latex printing for Traces. Has toggle for removing fork/join or not, and doesn't draw relation arrows
 latexTrace :: Bool -> [Event] -> IO ()
-latexTrace remFork = putStrLn . toLatex S.empty "" remFork . addLoc . removeFork
+latexTrace remFork = putStrLn . toLatex S.empty "" remFork . addLoc . (if remFork then removeFork else id)
 
 -- latex printing for example 1, using pre-defined set for arrows. Filters out Fork/Join
 -- shows usage of toLatex: a Set with Relations, a relation name, a bool to decide if fork/join should be removed, and a valid trace must be passed as arguments
@@ -57,7 +58,9 @@ interactiveLatex f t = do
     let fPair = makePairs . f
     let trace = addLoc t
     toMD False trace
-    putStrLn "\nDo you want to remove fork/join? (y/n)"
+    putStrLn "\nChoose a unique graph name:"
+    name <- getLine
+    putStrLn "Do you want to remove fork/join? (y/n)"
     decideFork <- getLine
     let relList = delSameThread $ if decideFork == "y" then delPairFork $ fPair trace else fPair trace
     putStrLn "Do you want to include all possible pairs? (y/n)"
@@ -70,8 +73,8 @@ interactiveLatex f t = do
                 let numList = map read (words nums)
                 let filteredList = filter (\e -> fst e `elem` numList) numberedList
                 let filteredSet = foldl (\r e -> S.insert (snd e) r) S.empty filteredList
-                putStrLn $ "\n\n" ++ toLatex filteredSet "PWR" False trace
-        else do putStrLn $ "\n\n" ++ toLatex relList "PWR" True trace
+                putStrLn $ "\n\n" ++ toLatex filteredSet name False trace
+        else do putStrLn $ "\n\n" ++ toLatex relList name True trace
 
 
 ---------- misc utility functions ----------
@@ -103,7 +106,7 @@ makePairs :: Map Event (Set Event) -> Set (Event, Event)
 makePairs = M.foldlWithKey (\r e s -> S.union r (S.map (\evt -> (evt, e)) s)) S.empty
 
 ---------- Markdown Printing ----------
--- (mostly inspired by existing work from souce/Trace.hs)
+-- (mostly inspired by existing work from sulzmann/source/Trace.hs)
 
 -- Markdown Printing of Trace, with extra last column
 toMDExtra :: (String, Event -> String) -> [Event] -> String
@@ -144,8 +147,8 @@ toLatex pairs name removeFork es =
         unlines (zipWith (++) (["", ""] ++ map (\c -> show c ++ ". & ") [1..]) (lines $  -- to add correct line numbers
         foldl (\s e -> let i = unThread $ thread e
                            tags = S.foldl (\r rel -> case (fst rel == e, snd rel == e) of  -- make tag if in relation set
-                                                            (True, _) -> fst (uncurry makeTag rel) : r
-                                                            (_, True) -> snd (uncurry makeTag rel) : r
+                                                            (True, _) -> fst (uncurry (makeTag name) rel) : r
+                                                            (_, True) -> snd (uncurry (makeTag name) rel) : r
                                                             _         -> r) [] pairs
                            (tagLeft, tagRight) = tagListToStrings tags
                            r = replicate i '&' ++ tagLeft ++ eventL e ++ tagRight ++ replicate (m-i) '&'
@@ -193,7 +196,7 @@ tikzL e f name = "\n \\begin{tikzpicture}[overlay, remember picture, yshift=.25\
                     "cm]{\\footnotesize{" ++ -- name ++               -- get relation name (currently disabled)
                     "}} to ({pic cs:" ++ snd tags ++                  -- insert mark name 2
                     "});\n \\end{tikzpicture} \n"
-    where tags = makeTag e f
+    where tags = makeTag name e f
           chooseBend FarR  = "left=100"
           chooseBend FarL  = "right=100"
           chooseBend NextR = "left"
@@ -212,10 +215,10 @@ rowRelation Event{thread=t1} Event{thread=t2} = case unThread t1 - unThread t2 o
                                                 x -> if x > 0 then FarL else FarR
 
 -- generates two tags based on which rows the events are in. Tags look like in this example: "l13" (=tag at the left of event 13)
-makeTag :: Event -> Event -> (String, String)
-makeTag e f = case rowRelation e f of
-                FarR  -> ("r" ++ show (loc e), "r" ++ show (loc f))
-                FarL  -> ("l" ++ show (loc e), "l" ++ show (loc f))
-                NextR -> ("r" ++ show (loc e), "l" ++ show (loc f))
-                NextL -> ("l" ++ show (loc e), "r" ++ show (loc f))
-                Same  -> ("l" ++ show (loc e), "l" ++ show (loc f))
+makeTag :: String -> Event -> Event -> (String, String)
+makeTag name e f = case rowRelation e f of
+                FarR  -> (name ++ "-r" ++ show (loc e), name ++ "-r" ++ show (loc f))
+                FarL  -> (name ++ "-l" ++ show (loc e), name ++ "-l" ++ show (loc f))
+                NextR -> (name ++ "-r" ++ show (loc e), name ++ "-l" ++ show (loc f))
+                NextL -> (name ++ "-l" ++ show (loc e), name ++ "-r" ++ show (loc f))
+                Same  -> (name ++ "-l" ++ show (loc e), name ++ "-l" ++ show (loc f))

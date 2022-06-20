@@ -68,6 +68,12 @@ pwr trace = evalState (foldM (\r e -> case op e of
                              ) (EventMap M.empty) trace) emptyState
             where rAdd r e v = EventMap (M.insert e v (eventMap r))
 
+pwrClock :: [Event] -> R VClock
+pwrClock = pwr
+
+pwrSet :: [Event] -> R (Set Event)
+pwrSet = pwr
+
 ---------- functions for every type of event ----------
 
 -- modify state for acquire: sync clocks -> update lockset of thread, update last aquire for lock -> increment
@@ -170,12 +176,9 @@ forkAdd t call_t c = M.insert t (c M.! call_t) c
 
 ---------- Printing ----------
 
--- prettier printing for vector clocks
-vClockShow (VClock c) = init $ init $ M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ ", " ++ r) "" c
-
 -- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
 annotatedWithPWR :: [Event] -> IO ()
-annotatedWithPWR = annotTrace (eventMap . pwr) vClockShow "Vector Clocks"
+annotatedWithPWR = annotTrace (eventMap . pwrClock) show "Vector Clocks"
 
 -- markdown printing for PWR - Sets.
 annotatedWithPWRSet :: [Event] -> IO ()
@@ -191,9 +194,6 @@ instance Show TStamp where
 
 instance Show VClock where
     show (VClock c) = init $ init $ M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ ", " ++ r) "" c
-
--- instance PWRType a => Show (R a) where
---     show (EventMap m) = M.foldrWithKey (\k v r -> show k ++ ": " ++ show v ++ "\n" ++ r) "" m
 
 ---------- general helper functions ----------
 
