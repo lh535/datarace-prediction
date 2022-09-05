@@ -1,5 +1,5 @@
 
-module Reorder where
+module ReorderNaive where -- formerly just "Reorder"
 
 import Data.List
 import Data.Maybe
