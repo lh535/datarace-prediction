@@ -1,7 +1,8 @@
-
 module Examples where
 
 import Trace
+
+-- for now: just copy-pasted old examples.
 
 -- NOTE:
 -- There's always a main thread.
@@ -129,6 +130,7 @@ ex6 =
 -- if ROD on that critical section has been applied in thread t.
 
 
+-- NOTE: this was modified to add fork, because own implementation relies on it
 ex7 =
   let t0 = mainThread
       t1 = nextThread t0
@@ -139,6 +141,7 @@ ex7 =
       wr t = wrE t y
       rd t = rdE t y
   in [
+      forkE t0 t1,
       acq t0,
       wr t0,
       rel t0,
