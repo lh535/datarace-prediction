@@ -22,11 +22,12 @@ maintainer:         hofertlisa@gmail.com
 extra-source-files:
     README.md
 
-library
-    exposed-modules: Trace, PWR, PrintTrace, Examples, TraceReorder, ReorderNaive
-    -- other-modules	
+executable benchmark-reorder 
+    main-is:          ReorderBenchmark.hs
+    ghc-options:      -main-is ReorderBenchmark
+    other-modules: Trace, PWR, PrintTrace, Examples, TraceReorder, ReorderNaive
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
-    build-depends:    base ^>=4.13.0.0, mtl, containers
+    build-depends:    base ^>=4.13.0.0, mtl, containers, criterion
     hs-source-dirs:   app, .
     default-language: Haskell2010

@@ -17,7 +17,7 @@ import qualified PWR as P
 wrds :: [Event] -> [(Event, Event)]
 wrds trace =
   let var :: Event -> Var
-      var e = case (op e) of
+      var e = case op e of
                 (Read x) -> x
                 (Write x) -> x
 
@@ -25,7 +25,7 @@ wrds trace =
       go writeHist acc [] = acc
       go writeHist acc (e:es)
          | isWrite (op e) = go (e:writeHist) acc es
-         | isRead (op e)  = case (filter (\f -> var e == var f) writeHist) of
+         | isRead (op e)  = case filter (\f -> var e == var f) writeHist of
                                (w:_) -> go writeHist ((w,e):acc) es
                                [] -> go writeHist acc es
                                      -- Read has no (last) write.
@@ -35,13 +35,22 @@ wrds trace =
   in go [] [] trace
 
 
+isWrite (Write _) = True
+isWrite _ = False
+
+isRead (Read _) = True
+isRead _ = False
+
+isRelease (Release _) = True
+isRelease _ = False
+
 -- Check that trace respects lock semantics.
 -- For each rel(x) there's a preceding acq(x), and
 -- there are no two consecutive acq(x)'s without rel(x) in between.
 lockSemantics :: [Event] -> Bool
 lockSemantics trace =
   let lock :: Event -> Lock
-      lock e = case (op e) of
+      lock e = case op e of
                   (Acquire x) -> x
                   (Release x) -> x
 
@@ -55,6 +64,10 @@ lockSemantics trace =
 
   in go S.empty trace
 
+-- Lookup dots = set of events.
+-- If k entry not present yet, yields empty set.
+dots k m = fromMaybe S.empty (M.lookup k m)
+
  -- PWR is complete.
  -- Hence, any valid trace reordering will respect the PWR relation.
  -- This suggest the following naive strategy to generate reorderings.
@@ -63,8 +76,8 @@ lockSemantics trace =
 -- 3. Keep all permuted traces for which the PWR relation remains stable (i.e. the same).
 reorderNaivePWR :: [Event] ->  [[Event]]
 reorderNaivePWR trace =
-     let dotsPWR t = P.evtDots $ P.pwr t
+     let dotsPWR t = P.eventMap $ P.pwrSet t
      in [ trace' | trace' <- permutations trace,
                    lockSemantics trace',
                    sort (wrds trace) == sort (wrds trace'), -- must sort, order of WRD pairs may change
-                   all (\e -> P.dots e (dotsPWR trace) == P.dots e (dotsPWR trace')) trace ]
+                   all (\e -> dots e (dotsPWR trace) == dots e (dotsPWR trace')) trace ]

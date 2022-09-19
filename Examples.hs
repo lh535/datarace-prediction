@@ -2,12 +2,208 @@ module Examples where
 
 import Trace
 
--- for now: just copy-pasted old examples.
-
 -- NOTE:
 -- There's always a main thread.
 -- All other threads are created via "fork".
 
+-- examples used for benchmarking trace reordering, by Lisa Hofert
+
+-- focussed on length, and read-write dependencies
+benchmark1 =
+    let t0 = mainThread 
+        t1 = nextThread t0
+        x = Var "x"
+    in [ forkE t0 t1,
+         wrE t0 x,
+         wrE t0 x,
+         wrE t0 x,
+                    rdE t1 x
+    ]
+
+benchmark2 =  -- 10 events
+    let t0 = mainThread 
+        t1 = nextThread t0
+        x = Var "x"
+    in [ forkE t0 t1,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE  t0 x,
+                    rdE t1 x,
+         wrE  t0 x
+    ]
+
+benchmark3 =  -- same as 2, but writes instead of reads (performance difference?)
+    let t0 = mainThread 
+        t1 = nextThread t0
+        x = Var "x"
+    in [ forkE t0 t1,
+         wrE t0 x,
+                    wrE t1 x,
+         wrE t0 x,
+                    wrE t1 x,
+         wrE t0 x,
+                    wrE t1 x,
+         wrE t0 x,
+                    wrE t1 x,
+         wrE t0 x
+    ]
+
+benchmark4 =  -- introduce locks, join, more threads. 10 events
+    let t0 = mainThread
+        t1 = nextThread t0
+        t2 = nextThread t0
+        a = Var "a"
+        b = Var "b"
+        y = Lock "y"
+    in [
+        forkE t0 t1,
+        forkE t0 t2,
+        acqE t0 y,
+        wrE t0 a,
+                        wrE t1 b,
+                        wrE t1 b,
+                                    rdE t2 b,
+        relE t0 y,
+        joinE t2 t0,
+        rdE t2 b
+    ]
+
+benchmark5 =  -- 13 events, stresstest for naive reordering
+    let t0 = mainThread 
+        t1 = nextThread t0
+        x = Var "x"
+    in [ 
+        forkE t0 t1,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE t0 x,
+                    rdE t1 x,
+         wrE  t0 x,
+                    rdE t1 x,
+         wrE  t0 x,
+                    rdE t1 x,
+         wrE  t0 x,
+                    rdE t1 x
+    ]
+
+benchmark6 = -- 13 events, normal
+    let t0 = mainThread
+        t1 = nextThread t0
+        t2 = nextThread t1 
+        a = Var "a"
+        b = Var "b"
+        y = Lock "y"
+    in [
+        forkE t0 t1,
+        forkE t0 t2,
+        wrE t0 a,
+                    wrE t1 a,
+                    acqE t1 y,
+                    rdE t1 a,
+                    relE t1 y,
+                                    wrE t2 b,
+                                    wrE t2 b,
+        rdE t0 b,
+                    wrE t1 b,
+                                    acqE t2 y,
+                                    wrE t2 a,
+                                    relE t2 y,
+        rdE t0 a
+    ]
+
+benchmark7 = -- more locking, 13 events
+    let t0 = mainThread 
+        t1 = nextThread t0
+        t2 = nextThread t1 
+        a = Lock "a"
+        b = Lock "b"
+        c = Lock "c"
+        x = Var "x"
+    in [
+        forkE t0 t1,
+        forkE t0 t2,
+        acqE t0 a,
+        wrE t0 x,
+                        acqE t1 b,
+                                        acqE t2 c,
+        relE t0 a,
+                        acqE t1 a,
+                        relE t1 b,
+                                        acqE t2 b,
+                                        relE t2 b, 
+                                        relE t2 c,
+                        relE t1 b
+    ]
+
+benchmark8 = -- more threads, 13 events
+    let t0 = mainThread
+        t1 = nextThread t0
+        t2 = nextThread t1
+        t3 = nextThread t2
+        t4 = nextThread t3
+        t5 = nextThread t4
+        x = Var "x"
+    in [
+        forkE t0 t1,
+        forkE t0 t2,
+        forkE t0 t3,
+        forkE t0 t4,
+        forkE t0 t5,
+                    wrE t1 x,
+                                rdE t2 x,
+                                            wrE t3 x,
+                                            rdE t3 x,
+                                                        rdE t4 x,
+                                                                    wrE t5 x,
+        joinE t0 t3,
+        rdE t0 x
+    ]
+
+benchmark9 = -- longer example, 27 events. not included in testing for naive reordering
+    let t0 = mainThread
+        t1 = nextThread t0
+        t2 = nextThread t1
+        a = Var "a"
+        b = Var "b"
+        y = Lock "y"
+    in [
+        forkE t0 t1,
+        forkE t0 t2,
+                    wrE t1 a,
+                                rdE t2 a,
+                                acqE t2 y,
+                                wrE t2 b,
+        rdE t0 a,
+                                relE t2 y,
+                    wrE t1 b,
+                    acqE t1 y,
+                    wrE t1 b,
+                    relE t1 y,
+                                rdE t2 b,
+                                wrE t2 a,
+        rdE t0 b,
+        rdE t0 a,
+                    wrE t1 a,   
+                                acqE t2 y,
+                                rdE t2 a,
+                                relE t2 y,
+        acqE t0 y,
+        rdE t0 a,
+        relE t0 y,
+                    wrE t1 b,
+        joinE t0 t2,
+        joinE t0 t1,
+        rdE t0 b
+    ]
+
+
+-- already existing examples: --------------------------------
 
 ex1 =
   let t0 = mainThread

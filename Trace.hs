@@ -13,6 +13,7 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State
 
+newtype Trace = Trace [Event] -- new addition. Should only be used for valid traces (i.e. addLoc has been used)
 
 newtype Loc = Loc Int deriving (Eq, Ord)
 unLoc (Loc i) = i
