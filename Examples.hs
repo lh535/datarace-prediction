@@ -36,22 +36,6 @@ benchmark2 =  -- 10 events
          wrE  t0 x
     ]
 
-benchmark3 =  -- same as 2, but writes instead of reads (performance difference?)
-    let t0 = mainThread 
-        t1 = nextThread t0
-        x = Var "x"
-    in [ forkE t0 t1,
-         wrE t0 x,
-                    wrE t1 x,
-         wrE t0 x,
-                    wrE t1 x,
-         wrE t0 x,
-                    wrE t1 x,
-         wrE t0 x,
-                    wrE t1 x,
-         wrE t0 x
-    ]
-
 benchmark4 =  -- introduce locks, join, more threads. 10 events
     let t0 = mainThread
         t1 = nextThread t0
@@ -72,25 +56,6 @@ benchmark4 =  -- introduce locks, join, more threads. 10 events
         rdE t2 b
     ]
 
-benchmark5 =  -- 13 events, stresstest for naive reordering
-    let t0 = mainThread 
-        t1 = nextThread t0
-        x = Var "x"
-    in [ 
-        forkE t0 t1,
-         wrE t0 x,
-                    rdE t1 x,
-         wrE t0 x,
-                    rdE t1 x,
-         wrE t0 x,
-                    rdE t1 x,
-         wrE  t0 x,
-                    rdE t1 x,
-         wrE  t0 x,
-                    rdE t1 x,
-         wrE  t0 x,
-                    rdE t1 x
-    ]
 
 benchmark6 = -- 13 events, normal
     let t0 = mainThread
@@ -138,7 +103,7 @@ benchmark7 = -- more locking, 13 events
                                         acqE t2 b,
                                         relE t2 b, 
                                         relE t2 c,
-                        relE t1 b
+                        relE t1 a
     ]
 
 benchmark8 = -- more threads, 13 events
@@ -202,6 +167,25 @@ benchmark9 = -- longer example, 27 events. not included in testing for naive reo
         rdE t0 b
     ]
 
+benchmark10 =  -- 12 events, new stresstest for naive reordering
+    let t0 = mainThread 
+        t1 = nextThread t0
+        t2 = nextThread t1
+        x = Var "x"
+        y = Lock "y"
+    in [ 
+        forkE t0 t1,
+        forkE t0 t2,
+        acqE t0 y,
+        wrE t0 x,
+        relE t0 y,
+                                acqE t2 y,
+                                rdE t2 x,
+                                relE t2 y,
+                    wrE t1 x,
+        wrE t0 x,
+                    rdE t1 x
+    ]
 
 -- already existing examples: --------------------------------
 

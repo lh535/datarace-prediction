@@ -74,7 +74,7 @@ mainThread = Thread 0
 nextThread (Thread i) = Thread (i+1)
 
 -- Apply on each trace to add proper location numbers.
-addLoc es = map (\(e,l) -> e { loc = Loc l }) $ zip es [1..]
+addLoc es = zipWith (\ e l -> e {loc = Loc l}) es [1..]
 
 
 -- User must guarantee that traces are well-formed.

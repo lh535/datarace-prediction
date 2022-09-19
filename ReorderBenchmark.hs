@@ -8,30 +8,33 @@ import Trace
 import Examples
 
 
-naiveIO :: [Event] -> [[Event]]
-naiveIO = reorderNaivePWR . addLoc
 
-reorderIO :: [Event] -> [[Event]]
-reorderIO = reorder . addLoc
+naiveIO :: [Event] -> [Int]
+naiveIO t = map length (reorderNaivePWR $ addLoc t)
+
+reorderIO :: [Event] -> [Int]
+reorderIO t = map length ( reorder $ addLoc t)
 
 main :: IO ()
 main = defaultMain [
-    bgroup "naive" [bench "Test 1" $ whnf naiveIO benchmark1,
-                    bench "Test 2" $ whnf naiveIO benchmark2,
-                    bench "Test 3" $ whnf naiveIO benchmark3,
-                    bench "Test 4" $ whnf naiveIO benchmark4,
-                    bench "Test 5" $ whnf naiveIO benchmark5,
-                    bench "Test 6" $ whnf naiveIO benchmark6,
-                    bench "Test 7" $ whnf naiveIO benchmark7,
-                    bench "Test 8" $ whnf naiveIO benchmark8
+    bgroup "naive" [bench "Test Short (length: 5)" $ nf naiveIO benchmark1,
+                    bench "Test Write-Read (length: 10)" $ nf naiveIO benchmark2,
+                    -- bench "Test 3" $ nfIO $ naiveIO benchmark3,
+                    bench "Test Regular (length: 10)" $ nf naiveIO benchmark4,
+                    -- bench "Test 5" $ whnfIO $ naiveIO benchmark5,
+                    -- bench "Test 6" $ whnfIO $ naiveIO benchmark6,  -- time out 10 mins
+                    -- bench "Test 7" $ whnf naiveIO benchmark7,  -- time out
+                    -- bench "Test 8" $ whnf naiveIO benchmark8
+                    bench "Test NaiveStress (length: 12)" $ nf naiveIO benchmark10
                     ],
-    bgroup "backtrack" [bench "Test 1" $ whnf reorderIO benchmark1,
-                        bench "Test 2" $ whnf reorderIO benchmark2,
-                        bench "Test 3" $ whnf reorderIO benchmark3,
-                        bench "Test 4" $ whnf reorderIO benchmark4,
-                        bench "Test 5" $ whnf reorderIO benchmark5,
-                        bench "Test 6" $ whnf reorderIO benchmark6,
-                        bench "Test 7" $ whnf reorderIO benchmark7,
-                        bench "Test 8" $ whnf reorderIO benchmark8,
-                        bench "Test 9" $ whnf reorderIO benchmark9
+    bgroup "backtrack" [bench "Test Short (length: 5)" $ nf reorderIO benchmark1,
+                        bench "Test Write-Read (length: 10)" $ nf reorderIO benchmark2,
+                        -- bench "Test 3" $ nfIO $ reorderIO benchmark3,
+                        bench "Test Regular (length: 10)" $ nf reorderIO benchmark4,
+                        -- bench "Test 5" $ nfIO $ reorderIO benchmark5,
+                        -- bench "Test 5" $ nf reorderIO benchmark6,
+                        bench "Test Lock-Unlock (length: 12)" $ nf reorderIO benchmark7,
+                        bench "Test More-Threads (length: 12)" $ nf reorderIO benchmark8,
+                        bench "Test NaiveStress (length: 12)" $ nf naiveIO benchmark10,
+                        bench "Test BacktrackStress (length: 27)" $ nf reorderIO benchmark9
                     ]]

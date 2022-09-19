@@ -80,6 +80,9 @@ pwrSet = pwr
 acquirePWR :: PWRType a => Event -> Lock -> State (PWRGlobal a) ()
 acquirePWR e y = do
     let i = thread e
+    s <- get
+    let newStates = if M.member i (tStates s) then tStates s else M.insert i startState (tStates s)
+    put s {tStates = newStates}
     incState e
     applyW3 i
     s <- get
@@ -92,6 +95,9 @@ acquirePWR e y = do
 releasePWR :: PWRType a => Event -> Lock -> State (PWRGlobal a) ()
 releasePWR e y = do
     let i = thread e
+    s <- get
+    let newStates = if M.member i (tStates s) then tStates s else M.insert i startState (tStates s)
+    put s {tStates = newStates}
     incState e
     applyW3 i
     s <- get
@@ -104,6 +110,10 @@ releasePWR e y = do
 writePWR :: PWRType a => Event -> Var -> State (PWRGlobal a) ()
 writePWR e x = do
     let i = thread e
+    s <- get
+    let newStates = if M.member i (tStates s) then tStates s else M.insert i startState (tStates s)
+    put s {tStates = newStates}
+    s <- get
     incState e
     applyW3 i
     s <- get
@@ -113,6 +123,9 @@ writePWR e x = do
 readPWR :: PWRType a => Event -> Var -> State (PWRGlobal a) ()
 readPWR e x = do
     let i = thread e
+    s <- get
+    let newStates = if M.member i (tStates s) then tStates s else M.insert i startState (tStates s)
+    put s {tStates = newStates}
     incState e
     s <- get
     let newClock = (tStates s M.! i) `union` (lastW s M.! x) -- access to lastW is safe because read can't be before first write
@@ -124,6 +137,9 @@ readPWR e x = do
 forkPWR :: PWRType a => Event -> Thread -> State (PWRGlobal a) ()
 forkPWR e j = do
     let i = thread e
+    s <- get
+    let newStates = if M.member i (tStates s) then tStates s else M.insert i startState (tStates s)
+    put s {tStates = newStates}
     incState e
     s <- get
     let extendedClocks = extend j (tStates s)
@@ -134,6 +150,10 @@ forkPWR e j = do
 joinPWR :: PWRType a => Event -> Thread -> State (PWRGlobal a) ()
 joinPWR e j = do
     let i = thread e
+    s <- get
+    let newStates' = if M.member j (tStates s) then tStates s else M.insert j startState (tStates s)
+    let newStates = if M.member i newStates' then newStates' else M.insert i startState newStates'
+    put s {tStates = newStates}
     incState e
     s <- get
     let newClock = (tStates s M.! j) `union` (tStates s M.! i)

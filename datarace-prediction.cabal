@@ -22,12 +22,20 @@ maintainer:         hofertlisa@gmail.com
 extra-source-files:
     README.md
 
-executable benchmark-reorder 
+executable reorder-benchmark
     main-is:          ReorderBenchmark.hs
-    ghc-options:      -main-is ReorderBenchmark
+    ghc-options:      -main-is ReorderBenchmark -O2
     other-modules: Trace, PWR, PrintTrace, Examples, TraceReorder, ReorderNaive
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
     build-depends:    base ^>=4.13.0.0, mtl, containers, criterion
-    hs-source-dirs:   app, .
+    hs-source-dirs:   .
+    default-language: Haskell2010
+
+executable profiling
+    main-is: Profiling.hs
+    ghc-options:   -main-is Profiling -O2 -prof -rtsopts
+    other-modules: Trace, PWR, PrintTrace, Examples, TraceReorder, ReorderNaive
+    build-depends:    base ^>=4.13.0.0, mtl, containers
+    hs-source-dirs:   .
     default-language: Haskell2010
