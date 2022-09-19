@@ -13,7 +13,7 @@ benchmark1 =
     let t0 = mainThread 
         t1 = nextThread t0
         x = Var "x"
-    in [ forkE t0 t1,
+    in addLoc [ forkE t0 t1,
          wrE t0 x,
          wrE t0 x,
          wrE t0 x,
@@ -24,7 +24,7 @@ benchmark2 =  -- 10 events
     let t0 = mainThread 
         t1 = nextThread t0
         x = Var "x"
-    in [ forkE t0 t1,
+    in addLoc [ forkE t0 t1,
          wrE t0 x,
                     rdE t1 x,
          wrE t0 x,
@@ -43,7 +43,7 @@ benchmark4 =  -- introduce locks, join, more threads. 10 events
         a = Var "a"
         b = Var "b"
         y = Lock "y"
-    in [
+    in addLoc [
         forkE t0 t1,
         forkE t0 t2,
         acqE t0 y,
@@ -64,7 +64,7 @@ benchmark6 = -- 13 events, normal
         a = Var "a"
         b = Var "b"
         y = Lock "y"
-    in [
+    in addLoc [
         forkE t0 t1,
         forkE t0 t2,
         wrE t0 a,
@@ -90,7 +90,7 @@ benchmark7 = -- more locking, 13 events
         b = Lock "b"
         c = Lock "c"
         x = Var "x"
-    in [
+    in addLoc [
         forkE t0 t1,
         forkE t0 t2,
         acqE t0 a,
@@ -114,7 +114,7 @@ benchmark8 = -- more threads, 13 events
         t4 = nextThread t3
         t5 = nextThread t4
         x = Var "x"
-    in [
+    in addLoc [
         forkE t0 t1,
         forkE t0 t2,
         forkE t0 t3,
@@ -137,7 +137,7 @@ benchmark9 = -- longer example, 27 events. not included in testing for naive reo
         a = Var "a"
         b = Var "b"
         y = Lock "y"
-    in [
+    in addLoc [
         forkE t0 t1,
         forkE t0 t2,
                     wrE t1 a,
@@ -173,7 +173,7 @@ benchmark10 =  -- 12 events, new stresstest for naive reordering
         t2 = nextThread t1
         x = Var "x"
         y = Lock "y"
-    in [ 
+    in addLoc [ 
         forkE t0 t1,
         forkE t0 t2,
         acqE t0 y,
@@ -193,7 +193,7 @@ ex1 =
   let t0 = mainThread
       t1 = nextThread t0
       x = Var "x"
-  in [ forkE t0 t1,
+  in addLoc [ forkE t0 t1,
                     wrE t1 x,      -- w1
        wrE t0 x,                   -- w2
                     rdE t1 x       -- r3
@@ -204,7 +204,7 @@ ex2 =
   let t0 = mainThread
       t1 = nextThread t0
       x = Var "x"
-  in [
+  in addLoc [
       wrE t0 x,
       forkE t0 t1,
                     wrE t1 x,
@@ -217,7 +217,7 @@ ex3 =
       t1 = nextThread t0
       x = Lock "x"
       y = Lock "y"
-  in [
+  in addLoc [
       acqE t0 x,
       forkE t0 t1,
                     acqE t1 y,
@@ -231,7 +231,7 @@ ex4 =
       t1 = nextThread t0
       x = Lock "x"
       z = Var "z"
-  in [
+  in addLoc [
       forkE t0 t1,
       acqE t0 x,
       wrE t0 z,
@@ -265,7 +265,7 @@ ex5 =
       acq t = acqE t x
       rel t = relE t x
       wr t = wrE t y
-  in [
+  in addLoc [
       forkE t0 t1,
       acq t0,
       wr t0,
@@ -284,7 +284,7 @@ ex6 =
       rel t = relE t x
       wr t = wrE t y
       rd t = rdE t y
-  in [
+  in addLoc [
       forkE t0 t1,
       acq t0,
       wr t0,
@@ -320,7 +320,7 @@ ex7 =
       rel t = relE t x
       wr t = wrE t y
       rd t = rdE t y
-  in [
+  in addLoc [
       forkE t0 t1,
       acq t0,
       wr t0,
@@ -339,7 +339,7 @@ ex8 =
       t2 = nextThread t1
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       forkE t0 t2,
       acqE t0 y,
@@ -387,7 +387,7 @@ ex9 =
       t2 = nextThread t1
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       forkE t0 t2,
       -- CS_0
@@ -409,7 +409,7 @@ ex9b =
       t2 = nextThread t1
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       forkE t0 t2,
       -- CS_0
@@ -444,7 +444,7 @@ ex10 =
       x = Var "x"
       y = Lock "y"
       z = Var "z"
-  in [
+  in addLoc [
       -- CS_0
       acqE t0 y,
       wrE t0 z,
@@ -484,7 +484,7 @@ ex11 =
       t2 = nextThread t1
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       forkE t0 t2,
       wrE t0 x,
@@ -516,7 +516,7 @@ ex12 =
       t1 = nextThread t0
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       wrE t0 x,
       -- CS_0
@@ -563,7 +563,7 @@ ex13 =
       t2 = nextThread t1
       x = Var "x"
       y = Lock "y"
-  in [
+  in addLoc [
       forkE t0 t1,
       forkE t0 t2,
       wrE t0 x,
@@ -584,142 +584,3 @@ ex13 =
                             rdE t2 x,
                             relE t2 y
       ]
-
-
----------------------------------------
--- Examples, Metzger Bachelor
-
-example3 =
-  let t0 = mainThread
-      t1 = nextThread t0
-      x = Lock "x"
-      y = Lock "y"
-      z = Var "z"
-  in [
-      forkE t0 t1,
-      acqE t0 y,
-      acqE t0 x,
-      wrE t0 z,
-      relE t0 x,
-      relE t0 y,
-                    acqE t1 x,
-                    rdE t1 z,
-                    acqE t1 y,
-                    relE t1 y,
-                    relE t1 x
-     ]
-
-
--- Use WRD for sync.
--- Not exactly the same as read only syncs with write and not vice versa.
-example4 =
-  let t0 = mainThread
-      t1 = nextThread t0
-      x = Lock "x"
-      y = Lock "y"
-      z = Lock "z"
-      s = Var "s"
-  in [
-      forkE t0 t1,
-      acqE t0 y,
-      wrE t0 s,
-      acqE t0 z,
-      acqE t0 x,
-      relE t0 x,
-      relE t0 y,
-                    rdE t1 s,
-                    acqE t1 x,
-                    acqE t1 y,
-                    relE t1 y,
-                    relE t1 x
-     ]
-
-
-example5 =
-  let t0 = mainThread
-      t1 = nextThread t0
-      x = Lock "x"
-      y = Lock "y"
-      z = Lock "z"
-      s = Var "s"
-  in [
-      forkE t0 t1,
-      acqE t0 y,
-      wrE t0 s,
-      acqE t0 z,
-      acqE t0 x,
-      relE t0 x,
-      relE t0 z,
-      relE t0 y,
-                    acqE t1 z,
-                    rdE t1 s,
-                    acqE t1 x,
-                    acqE t1 y,
-                    relE t1 y,
-                    relE t1 x,
-                    relE t1 z
-     ]
-
-
-
--- False positive.
--- There's an implicit gate lock z due to WRDs.
-example6 =
-  let t0 = mainThread
-      t1 = nextThread t0
-      t2 = nextThread t1
-      t3 = nextThread t2
-      x = Lock "x"
-      y = Lock "y"
-      z = Lock "z"
-      x1 = Var "x1"
-      l1 = Lock "l1"
-      x2 = Var "x2"
-      l2 = Lock "l2"
-      x3 = Var "x3"
-      l3 = Lock "l3"
-      x4 = Var "x4"
-      l4 = Lock "l4"
-      wr t l x = [acqE t l, wrE t x, relE t l]
-      rd t l x = [acqE t l, rdE t x, relE t l]
-      aacqrrel t x y = [acqE t x, acqE t y, relE t y, relE t x]
-  in [  forkE t0 t1,
-        forkE t0 t2,
-        forkE t0 t3,
-        acqE t0 z]
-     ++ wr t0 l1 x1
-     ++               rd t1 l1 x1
-     ++               aacqrrel t1 x y
-     ++               wr t1 l2 x2
-     ++ rd t0 l2 x2
-     ++ [relE t0 z]
-     ++                                                 [acqE t3 z]
-     ++                                                 wr t3 l3 x3
-     ++                                 rd t2 l3 x3
-     ++                                 aacqrrel t2 y x
-     ++                                 wr t2 l4 x4
-     ++                                                 rd t3 l4 x4
-     ++                                                 [relE t3 z]
-
-
-
--- False negative.
-example7 =
-  let t0 = mainThread
-      t1 = nextThread t0
-      t2 = nextThread t1
-      x = Lock "x"
-      y = Lock "y"
-  in [
-       forkE t0 t1,
-       forkE t0 t2,
-       acqE t0 x,
-                       acqE t1 y,
-                       relE t1 y,
-       joinE t0 t1,
-       relE t0 x,
-                                    acqE t2 y,
-                                    acqE t2 x,
-                                    relE t2 x,
-                                    relE t2 y
-     ]

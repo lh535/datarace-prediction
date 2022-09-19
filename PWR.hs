@@ -33,8 +33,8 @@ data R a = PWRType a => EventMap {eventMap :: Map Event a}
 ---------- PWR ----------
 
 -- run pwr, return map from events to calculated vector clocks
-pwr :: PWRType a => [Event] -> R a
-pwr trace = evalState (foldM (\r e -> case op e of
+pwr :: PWRType a => Trace -> R a
+pwr (Trace trace) = evalState (foldM (\r e -> case op e of
                                         Acquire y -> do
                                             acquirePWR e y
                                             s <- get
@@ -68,10 +68,10 @@ pwr trace = evalState (foldM (\r e -> case op e of
                              ) (EventMap M.empty) trace) emptyState
             where rAdd r e v = EventMap (M.insert e v (eventMap r))
 
-pwrClock :: [Event] -> R VClock
+pwrClock :: Trace -> R VClock
 pwrClock = pwr
 
-pwrSet :: [Event] -> R (Set Event)
+pwrSet :: Trace -> R (Set Event)
 pwrSet = pwr
 
 ---------- functions for every type of event ----------
@@ -197,16 +197,17 @@ forkAdd t call_t c = M.insert t (c M.! call_t) c
 ---------- Printing ----------
 
 -- markdown printing for PWR - Vector Clocks. Always includes fork/join for now
-annotatedWithPWR :: [Event] -> IO ()
+annotatedWithPWR :: Trace -> IO ()
 annotatedWithPWR = annotTrace (eventMap . pwrClock) show "Vector Clocks"
 
 -- markdown printing for PWR - Sets.
-annotatedWithPWRSet :: [Event] -> IO ()
+annotatedWithPWRSet :: Trace -> IO ()
 annotatedWithPWRSet = annotTraceSet (eventMap . pwr) "PWR Set"
 
-interactivePWR :: [Event] -> IO ()
+interactivePWR :: Trace -> IO ()
 interactivePWR = interactiveSet (eventMap . pwr) "PWR Sets"
 
+interactiveLatexPWR :: Trace -> IO ()
 interactiveLatexPWR = interactiveLatex (eventMap . pwr)
 
 instance Show TStamp where

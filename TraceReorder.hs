@@ -10,25 +10,25 @@ import Trace
 import PWR
 
 -- splits trace into a dict with list of events for each thread. Adds to a given map m 
-traceToLists' :: [Event] -> Map Thread [Event] -> Map Thread [Event]
-traceToLists' [] m = m
-traceToLists' (e:es) m = M.insert thr (e:prevList) prevM where
+traceToLists' :: Trace -> Map Thread Trace -> Map Thread Trace
+traceToLists' (Trace []) m = m
+traceToLists' (Trace (e:es)) m = M.insert thr (Trace (e:prevList)) prevM where
     thr = thread e
-    prevM = traceToLists' es m
-    prevList = M.findWithDefault [] thr prevM
+    prevM = traceToLists' (Trace es) m
+    prevList = unTrace $ M.findWithDefault (Trace []) thr prevM
 
 -- the same as traceToLists', but starting with empty map
-traceToLists :: [Event] -> Map Thread [Event]
+traceToLists :: Trace -> Map Thread Trace
 traceToLists t = traceToLists' t M.empty
 
 -- check if pwr relation is not violated for new addition to a trace. PWR computation of original trace is already given
 -- If there is a violation, there needs to be a rewind, because the new event had to have been earlier in the trace.
-pwrCheck :: R VClock -> [Event] -> Event -> Bool
-pwrCheck (EventMap v) t e = not $ any (\x -> (v M.! e) `before` (v M.! x)) t -- if e < x for any x in t, violation found. rewind.
+pwrCheck :: R VClock -> Trace -> Event -> Bool
+pwrCheck (EventMap v) (Trace t) e = not $ any (\x -> (v M.! e) `before` (v M.! x)) t -- if e < x for any x in t, violation found. rewind.
 
 -- builds map of wrd relations from a trace: every key is a read, and the value is the corresponding last write.
-wrdBuild :: [Event] -> Map Event Event
-wrdBuild t = let
+wrdBuild :: Trace -> Map Event Event
+wrdBuild (Trace t) = let
     go r lastWrites [] = r
     go r lastWrites (e@Event{op=Write x}:es) = go r (M.insert x e lastWrites) es
     go r lastWrites (e@Event{op=Read x}:es) = go (M.insert e (lastWrites M.! x) r) lastWrites es
@@ -36,8 +36,8 @@ wrdBuild t = let
     in go M.empty M.empty t
 
 -- given map that specifies wrd relation, current trace fragment and new event to be added, checks if wrd is not violated
-wrdCheck :: Map Event Event -> [Event] -> Event -> Bool
-wrdCheck wrds t e@Event{op=Read x} = case e `M.lookup` wrds of
+wrdCheck :: Map Event Event -> Trace -> Event -> Bool
+wrdCheck wrds (Trace t) e@Event{op=Read x} = case e `M.lookup` wrds of
                                         Nothing -> False
                                         Just w  -> w == findLastWrite (reverse t)
     where findLastWrite (w@Event{op=Write y}:es) | y == x = w
@@ -54,64 +54,64 @@ lockCheck ls _ = Just ls
 
 
 -- for saving state during reordering computations
-data ReorderSt = ReorderSt {curTrace :: [Event],          -- current attempt for a trace reordering
+data ReorderSt = ReorderSt {curTrace :: Trace,          -- current attempt for a trace reordering
                             threadPos :: Map Thread Int,  -- for each thread, points to the index of the event that hasn't been added yet
                             lockSet :: [Lock]}            -- saves which locks are currently in use
 
 -- given a trace, returns all valid trace reorderings as a list of traces (unordered)
-reorder :: [Event] -> [[Event]]
-reorder t = let
-    pwrT = pwr t :: R VClock
-    threadEv = traceToLists t
-    wrdT = wrdBuild t
-    maxThreadLen = M.map length threadEv  -- save lengths of event lists
-    threadCount = M.foldr (\x r -> r + 1) 0 threadEv -- count number of threads
+reorder :: Trace -> [Trace]
+reorder tr@(Trace t) = let
+  pwrT = pwr tr :: R VClock
+  threadEv = traceToLists tr
+  wrdT = wrdBuild tr
+  maxThreadLen = M.map (length . unTrace) threadEv  -- save lengths of event lists
+  threadCount = M.foldr (\x r -> r + 1) 0 threadEv -- count number of threads
 
-    -- see if new event passes all checks, could be valid addition to trace
-    tryAdd e curT lockS = case lockCheck lockS e of
-            Just newLockS -> if wrdCheck wrdT curT e && pwrCheck pwrT curT e
-                                then do Just (curT ++ [e], newLockS)  -- it might be more efficient to start building traces from the end...
-                                else Nothing
-            Nothing -> Nothing
+  -- see if new event passes all checks, could be valid addition to trace
+  tryAdd e curT lockS = case lockCheck lockS e of
+          Just newLockS -> if wrdCheck wrdT curT e && pwrCheck pwrT curT e
+                              then do Just (Trace (unTrace curT ++ [e]), newLockS)  -- it might be more efficient to start building traces from the end...
+                              else Nothing
+          Nothing -> Nothing
 
-    removeLock es Event{op=Release y} = y : es
-    removeLock es Event{op=Acquire y} = filter (/= y) es
-    removeLock es _ = es
+  removeLock es Event{op=Release y} = y : es
+  removeLock es Event{op=Acquire y} = filter (/= y) es
+  removeLock es _ = es
 
-    -- removes last event from trace, recreates what the state would have been like if the event wasn't added. Continues normal iteration afterwards
-    backtrack :: [[Event]] -> State ReorderSt [[Event]]
-    backtrack r = do
-        s <- get
-        case curTrace s of
-          [] -> return r
-          evs -> do 
-            let evThread = thread $ last evs
-            let oldPos = M.adjust (\x -> x - 1) evThread (threadPos s)
-            let oldLockS = removeLock (lockSet s) (last evs)
-            put s {curTrace = init evs, threadPos = oldPos, lockSet = oldLockS}; iter r (unThread evThread + 1)
+  -- removes last event from trace, recreates what the state would have been like if the event wasn't added. Continues normal iteration afterwards
+  backtrack :: [Trace] -> State ReorderSt [Trace]
+  backtrack r = do
+      s <- get
+      case curTrace s of
+        Trace [] -> return r
+        Trace evs -> do
+          let evThread = thread $ last evs
+          let oldPos = M.adjust (\x -> x - 1) evThread (threadPos s)
+          let oldLockS = removeLock (lockSet s) (last evs)
+          put s {curTrace = Trace $ init evs, threadPos = oldPos, lockSet = oldLockS}; iter r (unThread evThread + 1)
 
-    -- adds completed valid reorderings to result
-    returnTrace :: [[Event]] -> State ReorderSt [[Event]]
-    returnTrace r = do
-        s <- get
-        backtrack (curTrace s : r)
+  -- adds completed valid reorderings to result
+  returnTrace :: [Trace] -> State ReorderSt [Trace]
+  returnTrace r = do
+      s <- get
+      backtrack (curTrace s : r)
 
-    -- tries to iteratively add events from lists of events, starting from the beginning. At failure, tries next events, or if there are no options, backtracks
-    iter :: [[Event]] -> Int -> State ReorderSt [[Event]]
-    iter r i | i == threadCount = backtrack r -- tried to iterate, but out of options -> backtrack
-             | otherwise = do
-                        s <- get
-                        let j = threadPos s M.! Thread i
-                        if j < maxThreadLen M.! Thread i
-                            then case tryAdd ((threadEv M.! Thread i) !! j) (curTrace s) (lockSet s) of
-                                Just (x, lockS) -> do  -- event can be added successfully
-                                    let newPos = M.adjust (+1) (Thread i) (threadPos s)
-                                    put s {curTrace = x, lockSet = lockS, threadPos = newPos}
-                                    s <- get
-                                    if threadPos s == maxThreadLen
-                                        then returnTrace r
-                                        else iter r 0
-                                Nothing -> iter r (i+1)  -- adding event failed, try next one
-                            else iter r (i+1)  -- for the current thread there are no events left to be added, try next one
+  -- tries to iteratively add events from lists of events, starting from the beginning. At failure, tries next events, or if there are no options, backtracks
+  iter :: [Trace] -> Int -> State ReorderSt [Trace]
+  iter r i | i == threadCount = backtrack r -- tried to iterate, but out of options -> backtrack
+           | otherwise = do
+                      s <- get
+                      let j = threadPos s M.! Thread i
+                      if j < maxThreadLen M.! Thread i
+                          then case tryAdd (unTrace (threadEv M.! Thread i) !! j) (curTrace s) (lockSet s) of
+                              Just (x, lockS) -> do  -- event can be added successfully
+                                  let newPos = M.adjust (+1) (Thread i) (threadPos s)
+                                  put s {curTrace = x, lockSet = lockS, threadPos = newPos}
+                                  s <- get
+                                  if threadPos s == maxThreadLen
+                                      then returnTrace r
+                                      else iter r 0
+                              Nothing -> iter r (i+1)  -- adding event failed, try next one
+                          else iter r (i+1)  -- for the current thread there are no events left to be added, try next one
 
-    in evalState (iter [] 0) (ReorderSt [] (M.fromList [(Thread i, 0) | i <- [0..threadCount-1]]) [])
+  in evalState (iter [] 0) (ReorderSt (Trace []) (M.fromList [(Thread i, 0) | i <- [0..threadCount-1]]) [])

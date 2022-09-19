@@ -9,11 +9,11 @@ import Examples
 
 
 
-naiveIO :: [Event] -> [Int]
-naiveIO t = map length (reorderNaivePWR $ addLoc t)
+naiveIO :: Trace -> [Int]
+naiveIO t = map (length . unTrace) (reorderNaivePWR t)
 
-reorderIO :: [Event] -> [Int]
-reorderIO t = map length ( reorder $ addLoc t)
+reorderIO :: Trace -> [Int]
+reorderIO t = map (length . unTrace) ( reorder t)
 
 main :: IO ()
 main = defaultMain [

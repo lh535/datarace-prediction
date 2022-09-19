@@ -74,10 +74,11 @@ dots k m = fromMaybe S.empty (M.lookup k m)
 -- 1. Compute all permutations.
 -- 2. Consider only permutations under which WRDs remain stable.
 -- 3. Keep all permuted traces for which the PWR relation remains stable (i.e. the same).
-reorderNaivePWR :: [Event] ->  [[Event]]
-reorderNaivePWR trace =
+reorderNaivePWR :: Trace ->  [Trace]
+reorderNaivePWR t =
      let dotsPWR t = P.eventMap $ P.pwrSet t
-     in [ trace' | trace' <- permutations trace,
+         trace = unTrace t
+     in [ Trace trace' | trace' <- permutations trace,
                    lockSemantics trace',
                    sort (wrds trace) == sort (wrds trace'), -- must sort, order of WRD pairs may change
-                   all (\e -> dots e (dotsPWR trace) == dots e (dotsPWR trace')) trace ]
+                   all (\e -> dots e (dotsPWR (Trace trace)) == dots e (dotsPWR (Trace trace'))) trace ]

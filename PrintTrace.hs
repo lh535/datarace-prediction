@@ -10,53 +10,49 @@ import Trace
 import Examples
 import Control.Monad.RWS (MonadState(put))
 
--- NOTE: for all functions, addLoc is applied to traces automatically!
 
 -- Markdown Printing of Traces. If 2nd argument is true, fork/join are omitted
-toMD :: Bool -> [Event] -> IO ()
-toMD b t = (putStrLn . toMDExtra ("", const "") . addLoc) (if b then removeFork t else t)
+toMD :: Bool -> Trace -> IO ()
+toMD b t = (putStrLn . toMDExtra ("", const "")) (if b then removeFork t else t)
 
 -- annotate Trace with results from an algorithm that maps events to a set of related events. Doesn't remove fork/join
 -- f is function to compute relation, show_f is show function for result of f
-annotTrace :: ([Event] -> Map Event a) -> (a -> String) -> String -> [Event] -> IO ()
-annotTrace f fShow name t = putStrLn $ toMDExtra (name, \e -> fShow $ f trace M.! e) trace
-    where trace = addLoc t
+annotTrace :: (Trace -> Map Event a) -> (a -> String) -> String -> Trace -> IO ()
+annotTrace f fShow name trace@(Trace t) = putStrLn $ toMDExtra (name, \e -> fShow $ f trace M.! e) trace
 
 -- specialized version of annotTrace which uses setShow
-annotTraceSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO ()
+annotTraceSet :: (Trace -> Map Event (Set Event)) -> String -> Trace -> IO ()
 annotTraceSet f = annotTrace f setShow
 
 -- markdown printing where you can choose which events should be included in relation sets
 -- note that only chosen events show their sets, and only chosen events are in those sets as well
-interactiveSet :: ([Event] -> Map Event (Set Event)) -> String -> [Event] -> IO()
-interactiveSet f name t = do
-    let trace = addLoc t
+interactiveSet :: (Trace -> Map Event (Set Event)) -> String -> Trace -> IO()
+interactiveSet f name trace@(Trace t) = do
     let pwrSets = f trace
-    toMD False t
+    toMD False trace
     putStrLn "\n Choose Events to show relation for (type event locations, separated by a space):"
     nums <- getLine
     let numList = map (Loc . read) (words nums)
-    let filteredTrace = filter (\e -> loc e `elem` numList) trace
+    let filteredTrace = filter (\e -> loc e `elem` numList) t
     let filteredMap = M.filterWithKey (\e _ -> loc e `elem` numList) pwrSets
     let filteredSets = M.map (S.filter (\e -> loc e `elem` numList)) filteredMap
-    putStrLn $ toMDExtra (name, \e -> setShow $ filteredSets M.! e) filteredTrace
+    putStrLn $ toMDExtra (name, \e -> setShow $ filteredSets M.! e) (Trace filteredTrace)
 
 
 -- latex printing for Traces. Has toggle for removing fork/join or not, and doesn't draw relation arrows
-latexTrace :: Bool -> [Event] -> IO ()
-latexTrace remFork = putStrLn . toLatex S.empty "" remFork . addLoc . (if remFork then removeFork else id)
+latexTrace :: Bool -> Trace -> IO ()
+latexTrace remFork = putStrLn . toLatex S.empty "" remFork . (if remFork then removeFork else id)
 
 -- latex printing for example 1, using pre-defined set for arrows. Filters out Fork/Join
 -- shows usage of toLatex: a Set with Relations, a relation name, a bool to decide if fork/join should be removed, and a valid trace must be passed as arguments
 ex1Set = S.singleton ((wrE (Thread 1) (Var "x")){loc = Loc 2}, (rdE (Thread 1) (Var "x")){loc = Loc 4})
 latexEx1 :: IO ()
-latexEx1 = (putStrLn . toLatex ex1Set "PWR" True . addLoc) ex1
+latexEx1 = (putStrLn . toLatex ex1Set "PWR" True) ex1
 
 -- latex printing for a relation function:
-interactiveLatex :: ([Event] -> Map Event (Set Event)) -> [Event] -> IO ()
-interactiveLatex f t = do
+interactiveLatex :: (Trace -> Map Event (Set Event)) -> Trace -> IO ()
+interactiveLatex f trace@(Trace t) = do
     let fPair = makePairs . f
-    let trace = addLoc t
     toMD False trace
     putStrLn "\nChoose a unique graph name:"
     name <- getLine
@@ -88,8 +84,8 @@ delSameThread :: Set (Event, Event) -> Set (Event, Event)
 delSameThread = S.filter (\e -> uncurry rowRelation e /= Same)
 
 -- remove fork/join from trace - used before addLoc. Can't be applied to traces used in pwr computation
-removeFork :: [Event] -> [Event]
-removeFork = filter (not . isForkJoin)
+removeFork :: Trace -> Trace
+removeFork = Trace . filter (not . isForkJoin) . unTrace
 
 isForkJoin :: Event -> Bool
 isForkJoin Event{op=(Fork _)} = True
@@ -109,11 +105,11 @@ makePairs = M.foldlWithKey (\r e s -> S.union r (S.map (\evt -> (evt, e)) s)) S.
 -- (mostly inspired by existing work from sulzmann/source/Trace.hs)
 
 -- Markdown Printing of Trace, with extra last column
-toMDExtra :: (String, Event -> String) -> [Event] -> String
+toMDExtra :: (String, Event -> String) -> Trace -> String
 toMDExtra (titleLast, genLast) es =
     let firstRow = 4
         rowS   = 10   -- longest string in trace should be fork(tXX), which is 9 characters
-        m        = maximum $ map (unThread . thread) es
+        m        = maximum $ map (unThread . thread) (unTrace es)
         adj s xs | length xs >= s = error "fix row size"
                  | otherwise = xs ++ replicate (s - length xs) ' '
     in
@@ -123,7 +119,7 @@ toMDExtra (titleLast, genLast) es =
                                ++ adj rowS (show (op e)) ++ replicate (rowS * (m-i)) ' ' ++ genLast e
                        in s ++ "\n" ++ r)
         (replicate (firstRow - 1) ' ' ++ concat [adj rowS ("T" ++ show i) | i <- [0..m]] ++ titleLast) -- arbitrary length for last row title
-        es
+        (unTrace es)
 
 ---------- Latex Printing ----------
 
@@ -132,10 +128,10 @@ toMDExtra (titleLast, genLast) es =
 
 -- string representation of latex code for trace.
 -- arguments: Set of Events that should be shown as in relation (=add arrow); name of relation; bool to decide if fork/join should be included; trace.
-toLatex :: Set (Event, Event) -> String -> Bool -> [Event] -> String
+toLatex :: Set (Event, Event) -> String -> Bool -> Trace -> String
 toLatex pairs name removeFork es =
     let firstRow = 4
-        m        = maximum (map (unThread . thread) es)
+        m        = maximum (map (unThread . thread) (unTrace es))
         findRight tags = find (\t -> head t == 'r') tags
         findLeft tags = find (\t -> head t == 'l') tags
         tagListToStrings tags = case (findLeft tags, findRight tags) of
@@ -154,7 +150,7 @@ toLatex pairs name removeFork es =
                            r = replicate i '&' ++ tagLeft ++ eventL e ++ tagRight ++ replicate (m-i) '&'
                        in if removeFork && isForkJoin e then s else s ++ "\n" ++ r ++ lineL)  -- don't add line if it's fork/join event
         (bdaL m ++ concat [" & " ++ threadL i | i <- [1..m+1]] ++ lineL ++ "\\hline")
-        es))
+        (unTrace es)))
         ++ edaL ++ S.foldl (\r evts -> uncurry tikzL evts name ++ r) "" pairs  -- adds tikzpicture code afterwards
 
 ---------- converters to latex code ----------

@@ -13,7 +13,8 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State
 
-newtype Trace = Trace [Event] -- new addition. Should only be used for valid traces (i.e. addLoc has been used)
+newtype Trace = Trace [Event] deriving Show -- new addition. Should only be used for valid traces (i.e. addLoc has been used)
+unTrace (Trace t) = t
 
 newtype Loc = Loc Int deriving (Eq, Ord)
 unLoc (Loc i) = i
@@ -74,7 +75,8 @@ mainThread = Thread 0
 nextThread (Thread i) = Thread (i+1)
 
 -- Apply on each trace to add proper location numbers.
-addLoc es = zipWith (\ e l -> e {loc = Loc l}) es [1..]
+addLoc :: [Event] -> Trace
+addLoc es = Trace $ zipWith (\ e l -> e {loc = Loc l}) es [1..]
 
 
 -- User must guarantee that traces are well-formed.
@@ -84,7 +86,7 @@ exampleTrace =
       x = Var "x"
       y = Lock "y"
 
-  in [
+  in addLoc [
    wrE t0 x,
    acqE t0 y,
    rdE t0 x,
