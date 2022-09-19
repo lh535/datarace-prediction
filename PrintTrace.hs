@@ -9,6 +9,7 @@ import Data.List (find)
 import Trace
 import Examples
 import Control.Monad.RWS (MonadState(put))
+import Debug.Trace
 
 
 -- Markdown Printing of Traces. If 2nd argument is true, fork/join are omitted
@@ -142,7 +143,7 @@ toLatex pairs name removeFork es =
     in
         unlines (zipWith (++) (["", ""] ++ map (\c -> show c ++ ". & ") [1..]) (lines $  -- to add correct line numbers
         foldl (\s e -> let i = unThread $ thread e
-                           tags = S.foldl (\r rel -> case (fst rel == e, snd rel == e) of  -- make tag if in relation set
+                           tags = S.foldl (\r rel ->  case (fst rel == e, snd rel == e) of  -- make tag if in relation set
                                                             (True, _) -> fst (uncurry (makeTag name) rel) : r
                                                             (_, True) -> snd (uncurry (makeTag name) rel) : r
                                                             _         -> r) [] pairs
@@ -213,8 +214,8 @@ rowRelation Event{thread=t1} Event{thread=t2} = case unThread t1 - unThread t2 o
 -- generates two tags based on which rows the events are in. Tags look like in this example: "l13" (=tag at the left of event 13)
 makeTag :: String -> Event -> Event -> (String, String)
 makeTag name e f = case rowRelation e f of
-                FarR  -> (name ++ "-r" ++ show (loc e), name ++ "-r" ++ show (loc f))
-                FarL  -> (name ++ "-l" ++ show (loc e), name ++ "-l" ++ show (loc f))
-                NextR -> (name ++ "-r" ++ show (loc e), name ++ "-l" ++ show (loc f))
-                NextL -> (name ++ "-l" ++ show (loc e), name ++ "-r" ++ show (loc f))
-                Same  -> (name ++ "-l" ++ show (loc e), name ++ "-l" ++ show (loc f))
+                FarR  -> ("r-" ++ name ++ show (loc e), "r-" ++ name ++ show (loc f))
+                FarL  -> ("l-" ++ name ++ show (loc e), "l-" ++ name ++ show (loc f))
+                NextR -> ("r-" ++ name ++ show (loc e), "l-" ++ name ++ show (loc f))
+                NextL -> ("l-" ++ name ++ show (loc e), "r-" ++ name ++ show (loc f))
+                Same  -> ("l-" ++ name ++ show (loc e), "l-" ++ name ++ show (loc f))

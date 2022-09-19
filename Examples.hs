@@ -52,8 +52,8 @@ benchmark4 =  -- introduce locks, join, more threads. 10 events
                         wrE t1 b,
                                     rdE t2 b,
         relE t0 y,
-        joinE t2 t0,
-        rdE t2 b
+        rdE t0 b,
+        joinE t2 t0
     ]
 
 
@@ -82,7 +82,7 @@ benchmark6 = -- 13 events, normal
         rdE t0 a
     ]
 
-benchmark7 = -- more locking, 13 events
+benchmark7 = -- more locking, 14 events
     let t0 = mainThread 
         t1 = nextThread t0
         t2 = nextThread t1 
@@ -101,12 +101,13 @@ benchmark7 = -- more locking, 13 events
                         acqE t1 a,
                         relE t1 b,
                                         acqE t2 b,
+                                        rdE t2 x,
                                         relE t2 b, 
                                         relE t2 c,
                         relE t1 a
     ]
 
-benchmark8 = -- more threads, 13 events
+benchmark8 = -- more threads, 14 events
     let t0 = mainThread
         t1 = nextThread t0
         t2 = nextThread t1
@@ -125,6 +126,7 @@ benchmark8 = -- more threads, 13 events
                                             wrE t3 x,
                                             rdE t3 x,
                                                         rdE t4 x,
+                                                                    rdE t5 x,
                                                                     wrE t5 x,
         joinE t0 t3,
         rdE t0 x
@@ -167,7 +169,7 @@ benchmark9 = -- longer example, 27 events. not included in testing for naive reo
         rdE t0 b
     ]
 
-benchmark10 =  -- 12 events, new stresstest for naive reordering
+benchmark10 =  -- 11 events, new stresstest for naive reordering
     let t0 = mainThread 
         t1 = nextThread t0
         t2 = nextThread t1

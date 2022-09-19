@@ -23,3 +23,4 @@ reorderProf = do
     print $ {-# SCC "recursive" #-}reorder benchmark2
     print $ {-# SCC "recursive" #-}reorder  benchmark4
     print $ {-# SCC "recursive" #-}reorder benchmark10
+    print $ {-# SCC "recursive-stress" #-}reorder benchmark9
