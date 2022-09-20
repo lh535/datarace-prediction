@@ -10,6 +10,8 @@ Further information on the PWR relation can be found in the paper "Efficient, Ne
   * [Latex](#latex)
     * [Imports and Macros](#imports)
 * [PWR](#pwr)
+* [Reordering](#reorder)
+* [Benchmarking](#benchmarking)
 
 ## Modules
 It is not necessary to build the project, the needed files can just be copied over.  
@@ -22,7 +24,7 @@ from algorithm that compute a relation between events (such as PWR, Happens-Befo
 
 
 ## Traces
-Traces are represented as a list of Events `[Event]`. There are six types of events used: Reading a Variable, Writing a Variable, Acquiring a Lock, Releasing a Lock, Forking a Thread, and Joining a Thread. These Events can be be created using the following functions:  
+Traces are a type `Trace [Event]`. There are six types of events used: Reading a Variable, Writing a Variable, Acquiring a Lock, Releasing a Lock, Forking a Thread, and Joining a Thread. These Events can be be created using the following functions:  
 - `rdE t x` (read event with t=current thread, x=variable)
 - `wrE t x` (write event with t=current thread, x=variable)
 - `acqE t x` (acquire event with t=current thread, x=lock variable)
@@ -35,8 +37,7 @@ We start counting threads at 0, where thread 0 is the main thread. Every Trace m
 `mainThread` has no arguments and returns the main thread. `nextThread t` takes a thread t and returns a thread with an incremented index number.
 
 
-Each Event also should have a location number, however the functions above do not automatically add this location number. To add correct location numbers to a trace, `addLoc t` can be used, which takes a trace t and returns a trace (=list of events).  
-Many of the printing functions apply `addLoc` automatically for convenience, however it also isn't problematic to apply it multiple times.
+Each Event also should have a location number, however the functions above do not automatically add this location number. To add correct location numbers to a trace and generate a correct trace, `addLoc t` can be used, which takes a list of events and returns a trace of type `Trace`.  
 
 
 Lastly, an example on how to define a trace:  
@@ -60,7 +61,7 @@ The following is an overview of the most important functions that are provided.
 ### Markdown
 - `toMD remFork t` : prints a markdown table for a trace `t`. If `remFork` is True, fork/join is removed.
 - `annotTrace f fShow name t` : like with `toMD`, a trace `t` is printed. Additionally, a function  
-`f :: Show a => ([Event] -> Map Event a)` should be supplied, which computes relations between events.  
+`f :: Show a => (Trace -> Map Event a)` should be supplied, which computes relations between events.  
 `f_show :: a -> String` is a function to show the result of f, and can be just `show` if `a` is an instance of Show.  
 Lastly, String `name` is used as a column name.  
 All this information will be used for an additional column of information on the left of the trace. (Note: this is the only function where f can return a map to arbitrary types of values)
@@ -102,14 +103,13 @@ Lastly, if more or different macros are used for events, the latex output for tr
 \usetikzlibrary{arrows,automata}
 \usetikzlibrary{trees,shapes,decorations}
 
-\newcommand{\thread}[2]{#1 \sharp #2}
-\newcommand{\lockE}[1]{\mathit{acq}(#1)}
-\newcommand{\unlockE}[1]{\mathit{rel}(#1)}
-\newcommand{\readE}[1]{r(#1)}
-\newcommand{\writeE}[1]{w(#1)}
-\newcommand{\forkE}[1]{fork(#1)}
-\newcommand{\joinE}[1]{join(#1)}
-
+\newcommand{\thread}[2]{\ensuremath{#1 \sharp #2}}
+\newcommand{\lockE}[1]{\ensuremath{acq(#1)}}
+\newcommand{\unlockE}[1]{\ensuremath{rel(#1)}}
+\newcommand{\readE}[1]{\ensuremath{r(#1)}}
+\newcommand{\writeE}[1]{\ensuremath{w(#1)}}
+\newcommand{\forkE}[1]{\ensuremath{fork(#1)}}
+\newcommand{\joinE}[1]{\ensuremath{join(#1)}}
 
 \newcommand{\ba}{\begin{array}}
 \newcommand{\ea}{\end{array}}
@@ -129,3 +129,13 @@ There are also specialized functions for pwr printing:
 - `annotatedWithPWRSet t` prints a markdown table of the trace `t` and the pwr sets
 - `interactivePWR t` is the PWR version of `interactiveSet` and can print markdown for only some events. See section about markdown printing for more details.
 - `interactiveLatexPWR t` can print latex code of the trace `t`, with the option to add arrows for events that are in the pwr relation. See section about latex printing for more details. 
+
+## Reordering
+There are two files which compete all possible valid reorderings: ReorderNaive, which is based on work by Martin Sulzmann, and TraceReorder.  
+ReorderNaive computes all possible permutations of a trace and checks them validity, before returning a list of valid traces.  
+The function to test this reordering method is `reorderNaivePWR t`, where `t` is a trace.  
+TraceReorder aims to do the same thing, but by using a backtracking algorithm. The function for this is `reorder t` for a trace `t`.
+
+## Benchmarking
+A benchmark and profiling report are already saved in `reorder-benchmark.html` and `profiling.prof`. To run the benchmarks yourself, you can run `cabal run cabal run reorder-benchmark -- --output reorder-benchmark.html`.  
+For profiling, `cabal run profiling -- +RTS -P` can be used. Additional tests can be added in the corresponding files ReorderBenchmark.hs and Profiling.hs.
