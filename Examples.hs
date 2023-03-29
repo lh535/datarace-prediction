@@ -13,10 +13,11 @@ benchmark1 =
     let t0 = mainThread 
         t1 = nextThread t0
         x = Var "x"
-    in addLoc [ forkE t0 t1,
-         wrE t0 x,
-         wrE t0 x,
-         wrE t0 x,
+    in addLoc [ 
+        forkE t0 t1,
+        wrE t0 x,
+        wrE t0 x,
+        wrE t0 x,
                     rdE t1 x
     ]
 

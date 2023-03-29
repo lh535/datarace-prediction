@@ -70,8 +70,8 @@ interactiveLatex f trace@(Trace t) = do
                 let numList = map read (words nums)
                 let filteredList = filter (\e -> fst e `elem` numList) numberedList
                 let filteredSet = foldl (\r e -> S.insert (snd e) r) S.empty filteredList
-                putStrLn $ "\n\n" ++ toLatex filteredSet name False trace
-        else do putStrLn $ "\n\n" ++ toLatex relList name True trace
+                putStrLn $ "\n\n" ++ toLatex filteredSet name (decideFork == "y") trace
+        else do putStrLn $ "\n\n" ++ toLatex relList name (decideFork == "y") trace
 
 
 ---------- misc utility functions ----------
@@ -197,6 +197,7 @@ tikzL e f name = "\n \\begin{tikzpicture}[overlay, remember picture, yshift=.25\
           chooseBend FarR  = "left=100"
           chooseBend FarL  = "right=100"
           chooseBend NextR = "left"
+          chooseBend NextL = "left"
           chooseBend _     = "right"
 
 ---------- helper functions for latex printing ----------
